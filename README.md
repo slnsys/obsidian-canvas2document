@@ -15,6 +15,8 @@ But an obsidian canvas can also look like this, making a simple hierarchical con
 
 <img src="images/screen20240320090013.png" alt="screensimple" width="400"/>
 
+# Usage
+In the command palette call "Convert Canvas to a longform document"
 
 # Roadmap
 * Merging the embedded files in target doc

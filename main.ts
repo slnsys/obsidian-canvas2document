@@ -23,7 +23,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		this.fsadapter = this.app.vault.adapter as FileSystemAdapter;
 	
 		this.addCommand({
-			id: "run-canvas2document",
+			id: "run-conversion",
 			name: "Convert Canvas to a longform document",
 			callback: async () => {
 				const canvStruct = await this.readCanvasStruct();

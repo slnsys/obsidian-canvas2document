@@ -3,9 +3,8 @@
 	"name": "Canvas2Document",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Plugin for Obsidian to convert a complete Canvas to a long form document, integrating all Cards, Notes, Images and other multimedia content into a single markdown file.",
+	"description": "Convert a complete Obsidian Canvas to a long form document, integrating all Cards, Notes, Images and other multimedia content into a single markdown file.",
 	"author": "Steffen Leich-Nienhaus",
 	"authorUrl": "https://slnsys.de/obsidian/canvas2document",
-	"fundingUrl": "",
 	"isDesktopOnly": false
 }
