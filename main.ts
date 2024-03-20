@@ -126,6 +126,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		return fileContents;
 	}
+
+	getNodes(id) {
+		// get all nodes from the canvas file
+		// return array of nodes
+		return;
+		
+	}
 	
 	async writeCanvDocFile(content, convStruct) {
 		// console.log(content);
@@ -162,10 +169,10 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				contentString += "> [!tip] link navigation from the canvas\n"
 				for (const edge of myparsed_data.edges) {
 					if (edge.fromNode == element[0]) {
-						contentString += "> linking to: [[#^" + edge.toNode + "|my link]]\n"
+						contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
 					} 
 					if (edge.toNode == element[0]) {
-						contentString += "> linked from: [[#^" + edge.fromNode + "|my link]]\n"
+						contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
 					} 
 				}
 
@@ -185,10 +192,10 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				contentString += "> [!tip] link navigation from the canvas\n"
 				for (const edge of myparsed_data.edges) {
 					if (edge.fromNode == element[0]) {
-						contentString += "> linking to: [[#^" + edge.toNode + "|my link]]\n"
+						contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
 					} 
 					if (edge.toNode == element[0]) {
-						contentString += "> linked from: [[#^" + edge.fromNode + "|my link]]\n"
+						contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
 					} 
 				}
 
@@ -216,10 +223,10 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					contentString += "> [!tip] link navigation from the canvas\n"
 					for (const edge of myparsed_data.edges) {
 						if (edge.fromNode == element[0]) {
-							contentString += "> linking to: [[#^" + edge.toNode + "|my link]]\n"
+							contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
 						} 
 						if (edge.toNode == element[0]) {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|my link]]\n"
+							contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
 						} 
 					}
 					// starttag meta data block
@@ -244,10 +251,10 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					contentString += "> [!tip] link navigation from the canvas\n"
 					for (const edge of myparsed_data.edges) {
 						if (edge.fromNode == element[0]) {
-							contentString += "> linking to: [[#^" + edge.toNode + "|my link]]\n"
+							contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
 						} 
 						if (edge.toNode == element[0]) {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|my link]]\n"
+							contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
 						} 
 					}
 				

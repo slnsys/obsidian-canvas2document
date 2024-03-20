@@ -6,6 +6,11 @@ With Canvas2Document you can convert any canvas structure with all content, i.e.
 The plugin helps you to pour all the elements of a novel or a complex startup plan into one document and not have to copy all the components individually.
 
 The plugin reads [Obsidian's](https://obsidian.md/blog/json-canvas/) [JSON Canvas File Format](https://jsoncanvas.org/) and takes the elements from the canvas with their specific metadata can then also be used to navigate and arrange the elements in the document.
+
+The connections in the canvas are replicated via metadata headers with corresponding links in the target document.
+
+<img src="images/metaheader-doc.png" alt="screencomplex" width="400"/>
+
 # Handling of the generated documents
 An adjustment or arrangement of the documents may be necessary because Obsidian Canvas is not necessarily used as a graph with a consistent hierarchical structure, as in the figure:
 
