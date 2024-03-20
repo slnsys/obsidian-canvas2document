@@ -9,7 +9,7 @@ The plugin reads [Obsidian's](https://obsidian.md/blog/json-canvas/) [JSON Canva
 
 The connections in the canvas are replicated via metadata headers with corresponding links in the target document.
 
-<img src="images/metaheader-doc.png" alt="screencomplex" width="400"/>
+<img src="images/metaheader-doc.png" alt="screencomplex" width="600"/>
 
 # Handling of the generated documents
 An adjustment or arrangement of the documents may be necessary because Obsidian Canvas is not necessarily used as a graph with a consistent hierarchical structure, as in the figure:
