@@ -2,6 +2,10 @@
 
 ![Screencast](images/canv2doc.gif)
 
+> [!IMPORTANT]  
+> This addon is currently being evaluated by the Obsidian team and is not yet available in the addon store.
+
+
 With Canvas2Document you can convert any canvas structure with all content, i.e. cards, notes, media (images, YouTube videos, PDF, websites) from the 2-dimensional representation into the linear structure of a document.
 The plugin helps you to pour all the elements of a novel or a complex startup plan into one document and not have to copy all the components individually.
 
