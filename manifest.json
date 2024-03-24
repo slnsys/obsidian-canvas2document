@@ -6,5 +6,5 @@
 	"description": "Convert a complete Obsidian Canvas to a long form document, integrating all Cards, Notes, Images and other multimedia content into a single markdown file.",
 	"author": "slnsys",
 	"authorUrl": "https://slnsys.de/obsidian/canvas2document",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }
