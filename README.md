@@ -4,6 +4,11 @@
 
 > [!IMPORTANT]  
 > This addon is currently being evaluated by the Obsidian team and is not yet available in the addon store.
+> 
+> To install it anyway in this pre state:
+> * just copy from the latest release (https://github.com/slnsys/obsidian-canvas2document/releases/tag/1.0.1) the attachments main.js and manifest.json to a dir in your vault's plugin dir
+> * reload your community plugins and
+> * enable the "Canvas2Document" plugin.
 
 
 With Canvas2Document you can convert any canvas structure with all content, i.e. cards, notes, media (images, YouTube videos, PDF, websites) from the 2-dimensional representation into the linear structure of a document.
