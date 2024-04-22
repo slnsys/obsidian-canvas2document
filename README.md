@@ -13,7 +13,7 @@ The plugin reads [Obsidian's](https://obsidian.md/blog/json-canvas/) [JSON Canva
 The conversion process takes place in two steps:
 1. First, a document is created (with command **Convert canvas to a longform document**) that integrates the elements of the canvas in manageable blocks (navigation headings are visible in the outline). The text content is not yet written into the document, but rather just embedded.
 This allows the headings of cards and notes in the outline to be ignored, which in turn allows these blocks to be arranged or deleted at the canvas node level.
-2. If the document is in the correct order and size, you can delete the node level navigation headings and the canvas metadata (with command **Clear canvas2document target document**) and you will receive your cleaned, converted canvas document.
+2. If the document is in the correct order and size, you can delete the node level navigation headings and the canvas metadata (with command **Clear canvas2document target document**) and you will receive your cleaned, converted canvas document containing all the real content level headings to continue editing the document normally.
 
 <img src="images/c2dtasks.png" alt="screencomplex" width="500"/>
 
