@@ -1,6 +1,15 @@
 # Changelog for Obsidian Plugin **Canvas2Document**
 
-# 22.04.2024: Conversion processing
+# 15.05.2024: 1.2.0 Hierarchy, Ordering, more Metadata for navigation
+
+**Improvements**
+
+* Hierarchy reading: brings the canvas hierarchical relations and ordering as TOC-tree to navigate
+* Flexibility in Canvas Reading: recognizes multiple areas with multiple tree/graph structures
+* Better metadata on navigational headings: data from nodes and files in navigational headers
+* Filenames as headings in resultdoc
+
+# 22.04.2024: 1.1.0 Conversion processing
 
 **Feature completion**
 
