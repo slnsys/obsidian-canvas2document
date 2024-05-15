@@ -1,6 +1,7 @@
 import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter } from 'obsidian';
 // import * as fs from 'fs';
 import * as path from 'path';
+import { exit } from 'process';
 
 export default class Canvas2DocumentPlugin extends Plugin {
 	fsadapter: FileSystemAdapter;
@@ -27,7 +28,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 				const contents = await this.readCanvasData(canvStruct);
 
-				this.writeCanvDocFile(contents, canvStruct);
+				const result = await this.writeCanvDocFile(contents, canvStruct);
 
 			},
 		});
@@ -41,9 +42,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					new Notice(`this is not a canvas2document target file`);
 					return;
 				}
-
-				// const contents = await this.readCanvasData(canvStruct);
-
 				this.writeC2Doc(canvStruct);
 			},
 		});
@@ -117,6 +115,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		for (const xfile of filenames) {
 			if (xfile.endsWith(".md")) {
 				const found = fileContents.find((element) => element[0] == xfile);
+
+				const { dir, name, ext } = path.parse(xfile);
+
+				if (! dir.endsWith("_canvas2doc-data")) {
+					doccontentstring += "# " + name + "\n\n"
+				}
+
 				doccontentstring += found[1] + "\n\n"
 			} else {
 				doccontentstring += "![[" + xfile + "]]\n\n"
@@ -165,128 +170,59 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		return content;
 	}	
 
-	async findAllXChildren(node, level = 0) {
-		console.log("level: " + level);
-		const children = canvasData.edges
-			.filter(edge => edge.fromNode === node)
-			.map(edge => edge.toNode);
-		
-		children.forEach(child => {
-			const grandchildren = findChildren(child, level + 1);
-			children.push(...grandchildren);
-		});
-		
-		return children;
-	}
-	
 	// TODO diese wird die findDefinedChildren, nicht rekursiver call, sondern 2-3 mal -> 5 Mal like headings
 	// dann der Rest über findAllXChrildren wird dann der letzten Ebene noch zugeordnet
-	async findChildren(node) {
+
+	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach):Promise<boolean> {
+
+		runcounterfunc++
+		if (runcounterfunc > 30) {
+			return false
+		}
+
+		for (const child of startGeneration) {
+			runcounterforeach++
+			if (runcounterforeach > myparsed_data.edges.length) {
+				return false
+			}
+
+			const nodeentry = myparsed_data.nodes.find(entry => entry.id === child);
 	
-		const children1 = canvasData.edges
-			.filter(edge => edge.fromNode === node)
-			.map(edge => edge.toNode);
-	
-		// console.log("CHILDREN1")
-		// console.log(children1)
-		// hier alle Ebenen quasi teilrekursiv durchgehen, wenn keine gefunden, natürlich break
-		children1.forEach(child1 => {
-	
-			const children2 = canvasData.edges
-			.filter(edge => edge.fromNode === child1)
-			.map(edge => edge.toNode);
-	
-			// console.log("CHILDREN2")
-			// console.log(children2)
-		
-			children2.forEach(child2 => {
-	
-				const children3 = canvasData.edges
-				.filter(edge => edge.fromNode === child2)
-				.map(edge => edge.toNode);
-	
-				// console.log("CHILDREN3")
-				// console.log(children3)
+			if (! handledNodes.has(child)) {
+				const result = await this.formatNode(nodeentry, 6)
+				fileContents.push(result);
+				handledNodes.add(child);
+			} else {
+				limitrecurseNodes++
+
+				if (limitrecurseNodes > 30) {
+					return false
+				}
+			}
+
+			let children = myparsed_data.edges.filter(edge => edge.fromNode === child).map(edge => edge.toNode);
 			
-				children3.forEach(child3 => {
-	
-					const children4 = canvasData.edges
-					.filter(edge => edge.fromNode === child3)
-					.map(edge => edge.toNode);
-	
-					// console.log("CHILDREN4")
-					// console.log(children4)
-				
-					children4.forEach(child4 => {
-	
-						const children5 = canvasData.edges
-						.filter(edge => edge.fromNode === child4)
-						.map(edge => edge.toNode);
-	
-						// console.log("CHILDREN5")
-						// console.log(children5)
-					
-					});
-		
-				});
-		
-			});
-	
-			// children.push(...grandchildren);
-		});
-		
-		// return children;
+			if (children.length > 0) {
+				const continueRecursion = await this.findAllXChildren(children, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach);
+				if (!continueRecursion) return false;
+			}
+		};
+
+		limitrecurseNodes++
+		return limitrecurseNodes <= 30
 	}
 
-	async readCanvasData(struct) {
-		// TODO: nochmal nach https://docs.obsidian.md/Plugins/Vault, read all files
-		// input liste eben aus canvas-JSON alle nodes
+	
+	async traverseNodes(initialNodes, myparsed_data, fileContents, handledNodes) {
 
-		const fileContents: [string, string, string, number, string][] = [];
-
-		let  myparsed_data = JSON.parse(struct);
-		console.log(myparsed_data)
-		console.log("reading canvas data")
-
-
-		const singleNodeIDs = new Set();
-		myparsed_data.nodes.forEach(node => {
-			singleNodeIDs.add(node.id);
-		});
-
-		// Extract unique fromNodes and toNodes
-		const fromNodes = new Set();
-		const toNodes = new Set();
-		myparsed_data.edges.forEach(edge => {
-			fromNodes.add(edge.fromNode);
-			toNodes.add(edge.toNode);
-		});
-
-		let handledNodes = new Set();
-		// TODO make this a setting
-		const skiphandledNodes = true
-
-		console.log("nodes"	)
-		console.log(singleNodeIDs)
-		console.log("fromNodes")
-		console.log(fromNodes)
-		console.log("toNodes: ")
-		console.log(toNodes)
-
-
-		const nodesWithoutParents = [...singleNodeIDs].filter(node => !toNodes.has(node));
-		console.log("nodesWithoutParents: " + nodesWithoutParents)
-
-		// TODO wenn nodeswithoutparents leer, liste alle node ids gleichwertig
-		nodesWithoutParents.forEach(node => {
+		for (const node of initialNodes) {
 
 			const nodeentry = myparsed_data.nodes.find(entry => entry.id === node);
 
 			// is  skiphandledNodes is true, check if node is already handled
 			if (! handledNodes.has(node)) {
-				this.formatNode(nodeentry, 1).then((result) => {
-					fileContents.push(result);
-				});	
+				const result = await this.formatNode(nodeentry, 1);
+				fileContents.push(result);
 			}
 
 			handledNodes.add(node);
@@ -295,19 +231,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			.filter(edge => edge.fromNode === node)
 			.map(edge => edge.toNode);
 	
-			// console.log("CHILDREN1")
-			// console.log(children1)
-			// TODO hier alle Ebenen quasi teilrekursiv durchgehen, wenn keine gefunden, natürlich break
-			children1.forEach(child1 => {
+			for (const child1 of children1) {
 		
 				const nodeentry = myparsed_data.nodes.find(entry => entry.id === child1);
 
 				if (! handledNodes.has(child1)) {
-					this.formatNode(nodeentry, 2).then((result) => {
-						fileContents.push(result);
-					});
-				} else {
-					console.log("already handled: " + child1)
+					const result = await this.formatNode(nodeentry, 2);
+					fileContents.push(result);
 				}
 
 				handledNodes.add(child1);
@@ -316,17 +246,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				.filter(edge => edge.fromNode === child1)
 				.map(edge => edge.toNode);
 		
-				console.log("CHILDREN2")
-				console.log(children2)
-			
-				children2.forEach(child2 => {
+				for (const child2 of children2) {
 
 					const nodeentry = myparsed_data.nodes.find(entry => entry.id === child2);
 
 					if (! handledNodes.has(child2)) {
-						this.formatNode(nodeentry, 3).then((result) => {
-							fileContents.push(result);
-						});
+						const result = await this.formatNode(nodeentry, 3);
+						fileContents.push(result);
 					}
 
 					handledNodes.add(child2);
@@ -335,17 +261,14 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					.filter(edge => edge.fromNode === child2)
 					.map(edge => edge.toNode);
 		
-					console.log("CHILDREN3")
-					console.log(children3)
 				
-					children3.forEach(child3 => {
+					for (const child3 of children3) {
 		
 						const nodeentry = myparsed_data.nodes.find(entry => entry.id === child3);
 
 						if (! handledNodes.has(child3)) {
-							this.formatNode(nodeentry, 4).then((result) => {
-								fileContents.push(result);
-							});
+							const result = await this.formatNode(nodeentry, 4);
+							fileContents.push(result);
 						}
 						
 						handledNodes.add(child3);
@@ -354,19 +277,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						.filter(edge => edge.fromNode === child3)
 						.map(edge => edge.toNode);
 		
-						console.log("CHILDREN4")
-						console.log(children4)
-					
-						children4.forEach(child4 => {
+						for (const child4 of children4) {
 		
 							const nodeentry = myparsed_data.nodes.find(entry => entry.id === child4);
 
 							if (! handledNodes.has(child4)) {
-								this.formatNode(nodeentry, 5).then((result) => {
-									fileContents.push(result);
-								});
-							} else {
-								console.log("already handled: " + child4)
+								const result = await this.formatNode(nodeentry, 5);
+								fileContents.push(result);
 							}
 
 							handledNodes.add(child4);
@@ -375,48 +292,124 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							.filter(edge => edge.fromNode === child4)
 							.map(edge => edge.toNode);
 		
-							console.log("CHILDREN5")
-							console.log(children5)
-						});
-					});
-				});
-				// children.push(...grandchildren);
-			});
-			// return children;
-		});
-		console.log("fileContents")
-		console.log(fileContents)
-		return fileContents;
+
+							for (const child5 of children5) {
+							
+								const nodeentry = myparsed_data.nodes.find(entry => entry.id === child5);
+	
+								if (! handledNodes.has(child5)) {
+									const result = await this.formatNode(nodeentry, 6);
+									fileContents.push(result);
+								}
+
+								handledNodes.add(child5);
+				
+								const children6 = myparsed_data.edges.filter(edge => edge.fromNode === child5).map(edge => edge.toNode);
+
+								// now turn to infinity -> findAllXChildren()							
+								let runcounterfunc: number = 0
+								let runcounterforeach: number = 0
+								let limitrecurseNodes: number = 0
+
+								const result = await this.findAllXChildren(children6, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
-	async formatNode(node, level): Promise<[string, string, string, number, string]> {
+	async readCanvasData(struct) {
+		// TODO: nochmal nach https://docs.obsidian.md/Plugins/Vault, read all files
+		// input liste eben aus canvas-JSON alle nodes
+
+		const fileContents: [string, string, string, number, string, string][] = [];
+
+		let  myparsed_data = JSON.parse(struct);
+
+		const singleNodeIDs = new Set();
+		const groupNodes = new Set();
+
+		myparsed_data.nodes.forEach(node => {
+			if (node.type === "group") {
+				// TODO later we also handle groups
+				groupNodes.add(node.id);
+			} else {
+				singleNodeIDs.add(node.id);
+			}
+		});
+
+		// Extract unique fromNodes and toNodes
+		const fromNodes = new Set();
+		const toNodes = new Set();
+		myparsed_data.edges.forEach(edge => {
+
+			// TODO later we also handle groups
+			if (groupNodes.has(edge.fromNode) || groupNodes.has(edge.toNode)) {
+				return;
+			}
+
+			fromNodes.add(edge.fromNode);
+			toNodes.add(edge.toNode);
+		});
+
+
+		let handledNodes = new Set();
+		// TODO make this a setting
+		const skiphandledNodes = true
+
+		let nodesWithoutParents = [...singleNodeIDs].filter(node => !toNodes.has(node));
+
+		if (nodesWithoutParents.length === 0) {
+			nodesWithoutParents = [...singleNodeIDs];
+		}
+
+		// first round of nodes without parents
+		const traverseresult = await this.traverseNodes(nodesWithoutParents, myparsed_data, fileContents, handledNodes);
+
+		const diff = new Set([...singleNodeIDs].filter(x => !handledNodes.has(x)));
+		
+		// if diff is not empty, we have nodes without parents and give them to findAllXChildren again
+		if (diff.size > 0) {
+			const traverseresult = await this.traverseNodes(diff, myparsed_data, fileContents, handledNodes);
+		}
+
+		return fileContents;		
+	}
+
+	async formatNode(node, level): Promise<[string, string, string, number, string, string]> {
 		const id = node.id;
 		const type = node.type;
 		let nodefile = "";
 
 		if (type === "file") {
 			nodefile = node.file;
+
 			const { name, ext } = path.parse(nodefile);
 
 			if (ext === ".md") {
-				return [id, type, nodefile, level, "textfile"];
+				return [id, type, nodefile, level, "textfile", name];
 			} else if (ext === ".jpg" || ext == ".jpeg" || ext === ".png" || ext === ".gif") {
-				return [id, type, nodefile, level, "contentimage"];
+				return [id, type, nodefile, level, "contentimage", name + "." + ext];
 			} else if (ext === ".pdf") {
-				return [id, type, nodefile, level, "contentpdf"];
+				return [id, type, nodefile, level, "contentpdf", name + "." + ext];
 			} else {
 				//TODO handle unknown file type");
 			}
 		} else if (type === "link") {
 			if (node.url.includes("youtube")) {
 				const url = node.url;
-				return [id, type, url, level, "contentyoutube"];
+				return [id, type, url, level, "contentyoutube", node.url];
 			} else {
-				return [id, type, node.url, level, "contentlink"];
+				return [id, type, node.url, level, "contentlink", node.url];
 			}
 		} else if (type === "text") {
 			const text = node.text;
-			return [id, type, "node", level, text];
+			// get first 100 chars of text
+			const textPreview = text.substring(0, 100);
+
+			return [id, type, "node", level, text, textPreview];
 		}
 	}
 	
@@ -446,6 +439,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 			// place number of # according to level
 			let heading = ""
+
 			for (let i = 0; i < element[3]; i++) {
 				heading += "#"
 			}
@@ -454,20 +448,24 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				
 				cnfname = writeworkdir + "/" + "newdoc-node_" + element[0] + "_fromCanvas.md"
 				
-				// heading für navi links
-				contentString += "\n\n" + heading + " ___card from Canvas\n"
-
-				// Filename und interner link anchor
+				contentString += "\n\n" + heading + " _card " + element[5] + "\n"
 				contentString += element[2] + " ^" + element[0] + "\n\n"
-
-				// linking box
 				contentString += "> [!tip] link navigation from the canvas\n"
+
 				for (const edge of myparsed_data.edges) {
 					if (edge.fromNode == element[0]) {
-						contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
+						const found = content.find((element) => element[0] == edge.toNode);
+						const firstline = found[5].split('\n')[0]
+						const found5 = firstline.replace(/#/g, "")
+
+						contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
 					} 
 					if (edge.toNode == element[0]) {
-						contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
+						const found = content.find((element) => element[0] == edge.fromNode);
+						const firstline = found[5].split('\n')[0]
+						const found5 = firstline.replace(/#/g, "")
+
+						contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 					} 
 				}
 
@@ -477,24 +475,29 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			} else if (element[1] == "link") {
 				// cnfname = writeworkdir + "/" + "newdoc-node_" + element[0] + " _fromCanvas.md"
 
-				// heading für navi links
-				contentString += "\n\n" + heading + " ___link from Canvas\n"
-
-				// Filename und interner link anchor
+				contentString += "\n\n" + heading + " _link " + element[5] + "\n"
 				contentString += element[2] + " ^" + element[0] + "\n\n"
-
-				// linking box
 				contentString += "> [!tip] link navigation from the canvas\n"
+
 				for (const edge of myparsed_data.edges) {
 					if (edge.fromNode == element[0]) {
-						contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
+						const found = content.find((element) => element[0] == edge.toNode);
+						const firstline = found[5].split('\n')[0]
+						const found5 = firstline.replace(/#/g, "")
+
+						contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
 					} 
 					if (edge.toNode == element[0]) {
-						contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
+						const found = content.find((element) => element[0] == edge.fromNode);
+						const firstline = found[5].split('\n')[0]
+						const found5 = firstline.replace(/#/g, "")
+
+						contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 					} 
 				}
 
 				//Embedding media specific
+				// TODO also add navigational title data to element metabox
 				if (element[4] == "contentyoutube") {
 					contentString += "\n ![](" + element[2] + ")\n\n"
 				} else if (element[4] == "contentlink") {
@@ -504,20 +507,25 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			} else if (element[1] == "file") {
 				if (element[4] == "contentimage" || element[4] == "contentpdf") {
 
-					// heading für navi links
-					contentString += "\n\n" + heading + " ___Media from Canvas\n"
-				
+					contentString += "\n\n" + heading + " _Media " + element[5] + "\n"
 					contentString += element[2] + " ^" + element[0] + "\n\n"
-
-					// linking box
 					// TODO linking box noch in funktion auslagern
 					contentString += "> [!tip] link navigation from the canvas\n"
+
 					for (const edge of myparsed_data.edges) {
 						if (edge.fromNode == element[0]) {
-							contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
+							const found = content.find((element) => element[0] == edge.toNode);
+							const firstline = found[5].split('\n')[0]
+							const found5 = firstline.replace(/#/g, "")
+
+							contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
 						} 
 						if (edge.toNode == element[0]) {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
+							const found = content.find((element) => element[0] == edge.fromNode);
+							const firstline = found[5].split('\n')[0]
+							const found5 = firstline.replace(/#/g, "")	
+
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 						} 
 					}
 					// starttag meta data block
@@ -531,27 +539,32 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					}				
 
 				} else {
-					
-					// heading für navi links
-					contentString += "\n\n" + heading + " ___noteFile from Canvas\n"
-				
-					// Filename und interner link anchor
-					contentString += element[2] + " ^" + element[0] + "\n\n"
+					// TODO confirm, that file is md, not the else case
 
-					// linking box
+					contentString += "\n\n" + heading + " _noteFile " + element[5] + "\n"
+					contentString += element[2] + " ^" + element[0] + "\n\n"
 					contentString += "> [!tip] link navigation from the canvas\n"
+
 					for (const edge of myparsed_data.edges) {
+
 						if (edge.fromNode == element[0]) {
-							contentString += "> linking to: [[#^" + edge.toNode + "|canvaslink]]\n"
+							const found = content.find((element) => element[0] == edge.toNode);
+							const firstline = found[5].split('\n')[0]
+							const found5 = firstline.replace(/#/g, "")
+
+							contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
 						} 
 						if (edge.toNode == element[0]) {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|canvaslink]]\n"
+							const found = content.find((element) => element[0] == edge.fromNode);
+							const firstline = found[5].split('\n')[0]
+							const found5 = firstline.replace(/#/g, "")	
+
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 						} 
 					}
 				
 					// Embedding
 					contentString += "\n ![[" +  element[2] + "]]\n\n"
-
 				}
 			}
 
@@ -581,7 +594,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		} catch (e) {
 			console.log(e)
 		}
-		return
+		return true
 
 	}
 }
