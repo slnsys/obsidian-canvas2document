@@ -170,9 +170,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		return content;
 	}	
 
-	// TODO diese wird die findDefinedChildren, nicht rekursiver call, sondern 2-3 mal -> 5 Mal like headings
-	// dann der Rest über findAllXChrildren wird dann der letzten Ebene noch zugeordnet
-
 	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach):Promise<boolean> {
 
 		runcounterfunc++
