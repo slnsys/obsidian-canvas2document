@@ -1,1 +1,0 @@
-# Canvas2Document documentation
