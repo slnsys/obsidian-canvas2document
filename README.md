@@ -18,6 +18,8 @@ This allows the headings of cards and notes in the outline to be ignored, which 
 
 <img src="images/canvas2document.png" alt="steps"/>
 
+You find a more in depth information in the repos [Wiki](https://github.com/slnsys/obsidian-canvas2document/wiki)
+
 # Handling of the generated documents
 An adjustment or arrangement of the documents may be necessary because Obsidian Canvas is not necessarily used as a graph with a consistent hierarchical structure, as in the figure:
 
@@ -30,4 +32,3 @@ But an obsidian canvas can also look like this, making a simple hierarchical con
 
 # Roadmap
 * Options for selecting types of elements to convert to Doc like "only notefiles", "no media"
-* Better recognizing of (simple) hierarchical structures in the canvas

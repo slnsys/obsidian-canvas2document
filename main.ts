@@ -18,7 +18,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		this.addCommand({
 			id: "run-conversion",
-			name: "Convert canvas to a longform document",
+			name: "Step 1 - Convert canvas to a longform document",
 			callback: async () => {
 				const canvStruct = await this.readCanvasStruct();
 				if (canvStruct == false) {
@@ -35,7 +35,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		this.addCommand({
 			id: "run-redoc",
-			name: "Clear canvas2document target document",
+			name: "Step 2 - Clear canvas2document target document",
 			callback: async () => {
 				const canvStruct = await this.readC2Dtarget();
 				if (canvStruct == false) {
@@ -130,15 +130,42 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		let docFilename
 		if (mdFolderPath == ".") {
-	    	docFilename = activeFile.basename + "_" + Math.round(new Date().getTime()/1000) + "_fromC2D.md"
+	    	docFilename = activeFile.basename + "_fromC2D.md"
 		} else {
-			docFilename = mdFolderPath + "/" + activeFile.basename + "_" + Math.round(new Date().getTime()/1000) + "_fromC2D.md"					
+			docFilename = mdFolderPath + "/" + activeFile.basename + "_fromC2D.md"					
 		}
 
 		try {
-			await this.app.vault.create(docFilename, doccontentstring)
+
+
+			const exists = await this.fsadapter.exists(docFilename);
+				
+			if (exists) {
+			  const confirmed = await new Promise(resolve => {
+				const notice = new Notice('File ' + docFilename + ' already exists. Overwrite?', 0);
+				notice.noticeEl.createEl('button', {text: 'Yes'}).onclick = () => {
+				  notice.hide();
+				  resolve(true);
+				};
+				notice.noticeEl.createEl('button', {text: 'No'}).onclick = () => {
+				  notice.hide();
+				  resolve(false);
+				};
+			  });
+			  
+			  if (!confirmed) {
+				return false; // User chose not to overwrite
+			  }
+			}
+			
+			await this.fsadapter.write(docFilename, doccontentstring);
+
+
+
+
+			// await this.app.vault.create(docFilename, doccontentstring)
 		} catch (e) {
-			console.log("error writing the new cleare doc file " + e)
+			console.log("error writing the new cleared doc file " + e)
 		}
 
 		const docftab = await this.app.vault.getAbstractFileByPath(docFilename);
@@ -421,9 +448,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		let canvasFile
 		let canvasFilename
 		if (mdFolderPath == ".") {
-	    	canvasFilename = activeFile.basename + "_" + Math.round(new Date().getTime()/1000) + "_fromCanvas.md"
+	    	canvasFilename = activeFile.basename + "_fromCanvas.md"
 		} else {
-			canvasFilename = mdFolderPath + "/" + activeFile.basename + "_" + Math.round(new Date().getTime()/1000) + "_fromCanvas.md"					
+			canvasFilename = mdFolderPath + "/" + activeFile.basename + "_fromCanvas.md"					
 		}
 
 		let contentString = "> [!info] This is an automatically generated document from Plugin [Canvas2Document](https://github.com/slnsys/obsidian-canvas2document)\n\> arrange the document as you need with the outline, then call *Clear canvas2document target document*\n\n"
@@ -468,6 +495,16 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 				//Embedding
 				contentString += "\n ![[" + cnfname + "]]\n\n"
+
+				let canvasnodeFile
+
+				try {
+					let cnfabst = this.app.vault.getAbstractFileByPath(cnfname);
+					await this.fsadapter.write(cnfname, element[4])
+				} catch (e) {
+					console.log(e)
+					return
+				}	
 
 			} else if (element[1] == "link") {
 				// cnfname = writeworkdir + "/" + "newdoc-node_" + element[0] + " _fromCanvas.md"
@@ -565,21 +602,33 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				}
 			}
 
-			let canvasnodeFile
-
-			try {
-				let cnfabst = this.app.vault.getAbstractFileByPath(cnfname);
-				this.app.vault.delete(cnfabst, true)
-				canvasnodeFile = this.app.vault.create(cnfname, element[4])
-			} catch (e) {
-				console.log(e)
-				return
-			}	
 
 		}
 
    	    try {
-	      canvasFile = await this.app.vault.create(canvasFilename, contentString)
+				const exists = await this.fsadapter.exists(canvasFilename);
+				
+				if (exists) {
+				  const confirmed = await new Promise(resolve => {
+					const notice = new Notice('File ' + canvasFilename + ' already exists. Overwrite?', 0);
+					notice.noticeEl.createEl('button', {text: 'Yes'}).onclick = () => {
+					  notice.hide();
+					  resolve(true);
+					};
+					notice.noticeEl.createEl('button', {text: 'No'}).onclick = () => {
+					  notice.hide();
+					  resolve(false);
+					};
+				  });
+				  
+				  if (!confirmed) {
+					return false; // User chose not to overwrite
+				  }
+				}
+				
+				await this.fsadapter.write(canvasFilename, contentString);
+
+	    //   canvasFile = await this.app.vault.create(canvasFilename, contentString)
 	    } catch (e) {
 			console.log("error writing the new doc file " + e)
 		}
@@ -595,4 +644,3 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 	}
 }
-
