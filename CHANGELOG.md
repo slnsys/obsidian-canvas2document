@@ -1,5 +1,7 @@
 # Changelog for Obsidian Plugin **Canvas2Document**
 
+# 2024-08-15: Bugfix for handling edges between nodes and groups
+
 # 2024-06-24: Filesystem clearings
  - better filenames and no cluttering of folders: overwriting of files with same name with confirmation
  - better filemanagement in writing temp files
