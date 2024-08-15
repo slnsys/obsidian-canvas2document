@@ -26,9 +26,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					return;
 				}
 
-				const contents = await this.readCanvasData(canvStruct);
+				let [contents, myparsed_data] = await this.readCanvasData(canvStruct);
 
-				const result = await this.writeCanvDocFile(contents, canvStruct);
+				const result = await this.writeCanvDocFile(contents, canvStruct, myparsed_data);
 
 			},
 		});
@@ -206,7 +206,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		for (const child of startGeneration) {
 			runcounterforeach++
-			if (runcounterforeach > myparsed_data.edges.length) {
+			if (runcounterforeach > myparsed_data.edges2.length) {
 				return false
 			}
 
@@ -224,7 +224,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				}
 			}
 
-			let children = myparsed_data.edges.filter(edge => edge.fromNode === child).map(edge => edge.toNode);
+			let children = myparsed_data.edges2.filter(edge => edge.fromNode === child).map(edge => edge.toNode);
 			
 			if (children.length > 0) {
 				const continueRecursion = await this.findAllXChildren(children, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach);
@@ -251,7 +251,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 			handledNodes.add(node);
 
-			const children1 = myparsed_data.edges
+			const children1 = myparsed_data.edges2
 			.filter(edge => edge.fromNode === node)
 			.map(edge => edge.toNode);
 	
@@ -266,7 +266,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 				handledNodes.add(child1);
 	
-				const children2 = myparsed_data.edges
+				const children2 = myparsed_data.edges2
 				.filter(edge => edge.fromNode === child1)
 				.map(edge => edge.toNode);
 		
@@ -281,7 +281,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 					handledNodes.add(child2);
 
-					const children3 = myparsed_data.edges
+					const children3 = myparsed_data.edges2
 					.filter(edge => edge.fromNode === child2)
 					.map(edge => edge.toNode);
 		
@@ -297,7 +297,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						
 						handledNodes.add(child3);
 
-						const children4 = myparsed_data.edges
+						const children4 = myparsed_data.edges2
 						.filter(edge => edge.fromNode === child3)
 						.map(edge => edge.toNode);
 		
@@ -312,7 +312,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 							handledNodes.add(child4);
 			
-							const children5 = myparsed_data.edges
+							const children5 = myparsed_data.edges2
 							.filter(edge => edge.fromNode === child4)
 							.map(edge => edge.toNode);
 		
@@ -328,7 +328,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 								handledNodes.add(child5);
 				
-								const children6 = myparsed_data.edges.filter(edge => edge.fromNode === child5).map(edge => edge.toNode);
+								const children6 = myparsed_data.edges2.filter(edge => edge.fromNode === child5).map(edge => edge.toNode);
 
 								// now turn to infinity -> findAllXChildren()							
 								let runcounterfunc: number = 0
@@ -350,7 +350,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		const fileContents: [string, string, string, number, string, string][] = [];
 
-		let  myparsed_data = JSON.parse(struct);
+		let myparsed_data = JSON.parse(struct);
 
 		const singleNodeIDs = new Set();
 		const groupNodes = new Set();
@@ -367,17 +367,20 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		// Extract unique fromNodes and toNodes
 		const fromNodes = new Set();
 		const toNodes = new Set();
-		myparsed_data.edges.forEach(edge => {
+		let groupClearedEdges = [];
+
+		let resa = await myparsed_data.edges.forEach(edge => {
 
 			// TODO later we also handle groups
 			if (groupNodes.has(edge.fromNode) || groupNodes.has(edge.toNode)) {
-				return;
+				// remove edge from myparsed_data
+			} else {
+				fromNodes.add(edge.fromNode);
+				toNodes.add(edge.toNode);
+				groupClearedEdges.push(edge)
 			}
-
-			fromNodes.add(edge.fromNode);
-			toNodes.add(edge.toNode);
 		});
-
+		myparsed_data.edges2=groupClearedEdges;
 
 		let handledNodes = new Set();
 		// TODO make this a setting
@@ -399,7 +402,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			const traverseresult = await this.traverseNodes(diff, myparsed_data, fileContents, handledNodes);
 		}
 
-		return fileContents;		
+		return [fileContents, myparsed_data];
 	}
 
 	async formatNode(node, level): Promise<[string, string, string, number, string, string]> {
@@ -437,7 +440,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		}
 	}
 	
-	async writeCanvDocFile(content, convStruct) {
+	async writeCanvDocFile(content, convStruct, myparsed_data) {
 		// establishing the workdir
 		let activeFile = this.app.workspace.getActiveFile();
 		let mdFolderPath: string = path.dirname(activeFile.path);
@@ -454,8 +457,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		}
 
 		let contentString = "> [!info] This is an automatically generated document from Plugin [Canvas2Document](https://github.com/slnsys/obsidian-canvas2document)\n\> arrange the document as you need with the outline, then call *Clear canvas2document target document*\n\n"
-
-		let myparsed_data = JSON.parse(convStruct);
 
 		for (const element of content) {
 			
@@ -476,7 +477,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				contentString += element[2] + " ^" + element[0] + "\n\n"
 				contentString += "> [!tip] link navigation from the canvas\n"
 
-				for (const edge of myparsed_data.edges) {
+				for (const edge of myparsed_data.edges2) {
 					if (edge.fromNode == element[0]) {
 						const found = content.find((element) => element[0] == edge.toNode);
 						const firstline = found[5].split('\n')[0]
@@ -513,7 +514,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				contentString += element[2] + " ^" + element[0] + "\n\n"
 				contentString += "> [!tip] link navigation from the canvas\n"
 
-				for (const edge of myparsed_data.edges) {
+				for (const edge of myparsed_data.edges2) {
 					if (edge.fromNode == element[0]) {
 						const found = content.find((element) => element[0] == edge.toNode);
 						const firstline = found[5].split('\n')[0]
@@ -546,7 +547,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					// TODO linking box noch in funktion auslagern
 					contentString += "> [!tip] link navigation from the canvas\n"
 
-					for (const edge of myparsed_data.edges) {
+					for (const edge of myparsed_data.edges2) {
 						if (edge.fromNode == element[0]) {
 							const found = content.find((element) => element[0] == edge.toNode);
 							const firstline = found[5].split('\n')[0]
@@ -579,7 +580,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					contentString += element[2] + " ^" + element[0] + "\n\n"
 					contentString += "> [!tip] link navigation from the canvas\n"
 
-					for (const edge of myparsed_data.edges) {
+					for (const edge of myparsed_data.edges2) {
 
 						if (edge.fromNode == element[0]) {
 							const found = content.find((element) => element[0] == edge.toNode);
