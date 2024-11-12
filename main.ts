@@ -193,7 +193,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		//let actcanvasfile = app.vault.getAbstractFileByPath(activeFile);
 		let content = this.app.vault.cachedRead(activeFile);
-
 		return content;
 	}	
 
@@ -417,12 +416,18 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 			if (ext === ".md") {
 				return [id, type, nodefile, level, "textfile", name];
+			} else if (ext === ".canvas") {
+				return [id, type, nodefile, level, "embeddedcanvas", name];
 			} else if (ext === ".jpg" || ext == ".jpeg" || ext === ".png" || ext === ".gif") {
 				return [id, type, nodefile, level, "contentimage", name + "." + ext];
+			} else if (ext === ".mp3" || ext === ".wav" || ext === ".ogg") {
+				return [id, type, nodefile, level, "contentaudio", name + "." + ext];
+			} else if (ext === ".mp4" || ext === ".webm") {
+				return [id, type, nodefile, level, "contentvideo", name + "." + ext];
 			} else if (ext === ".pdf") {
 				return [id, type, nodefile, level, "contentpdf", name + "." + ext];
 			} else {
-				//TODO handle unknown file type");
+				return [id, type, nodefile, level, "xfile", name + "." + ext];
 			}
 		} else if (type === "link") {
 			if (node.url.includes("youtube")) {
@@ -442,6 +447,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	
 	async writeCanvDocFile(content, convStruct, myparsed_data) {
 		// establishing the workdir
+
 		let activeFile = this.app.workspace.getActiveFile();
 		let mdFolderPath: string = path.dirname(activeFile.path);
 
@@ -633,7 +639,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	    } catch (e) {
 			console.log("error writing the new doc file " + e)
 		}
-
+		
 		const cnfabst = await this.app.vault.getAbstractFileByPath(canvasFilename);
 
 		try {

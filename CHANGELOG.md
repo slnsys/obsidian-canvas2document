@@ -1,8 +1,12 @@
 # Changelog for Obsidian Plugin **Canvas2Document**
 
-# 2024-08-15: Bugfix for handling edges between nodes and groups
+# 2024-11-12: 1.2.3 Bugfix Canvas embedding and support for other embedded file types
+- fixed crash when having special canvas embedding
+- added embedding support for more media types: Video, Audio
 
-# 2024-06-24: Filesystem clearings
+# 2024-08-15: 1.2.2 Bugfix for handling edges between nodes and groups
+
+# 2024-06-24: 1.2.1 Filesystem clearings
  - better filenames and no cluttering of folders: overwriting of files with same name with confirmation
  - better filemanagement in writing temp files
  - added "Step..." prefixes to commands

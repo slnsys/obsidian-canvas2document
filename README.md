@@ -9,6 +9,13 @@ The plugin reads [Obsidian's](https://obsidian.md/blog/json-canvas/) [JSON Canva
 
 <img src="images/conv1_metabox.png" alt="metaheader" width="500"/>
 
+# Supported embeddings
+- Images: jpg, jpeg, png, gif
+- Audio: mp3, ogg, wav
+- Video: mp4, webm
+- PDF
+- Canvas
+
 # Process and usage
 The conversion process takes place in two steps:
 1. First, a document is created (with command **Convert canvas to a longform document**) that integrates the elements of the canvas in manageable blocks (navigation headings are visible in the outline). The text content is not yet written into the document, but rather just embedded.
