@@ -1,13 +1,66 @@
-import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter } from 'obsidian';
+import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter, Setting, PluginSettingTab, getFrontMatterInfo } from 'obsidian';
 // import * as fs from 'fs';
 import * as path from 'path';
 import { exit } from 'process';
+import { C2DSettingTab } from './settings';
+
+interface C2DSettings {
+	usefrontmatter: boolean,
+	useedgelabels: boolean,
+}
+
+const DEFAULT_SETTINGS: Partial<C2DSettings> = {
+	usefrontmatter: true,
+	useedgelabels: true,
+};
+
+
+export class C2DSettingTab extends PluginSettingTab {
+	plugin: Canvas2DocumentPlugin;
+  
+	constructor(app: App, plugin: Canvas2DocumentPlugin) {
+	  super(app, plugin);
+	  this.plugin = plugin;
+	}
+  
+	display(): void {
+	  let { containerEl } = this;
+  
+	  containerEl.empty();
+  
+	  new Setting(containerEl)
+		.setName('Include YAML frontmatter from embedded documents')
+		.setDesc('Makes metadata from embedded documents usable in target document')
+		.addToggle(toggle =>
+			toggle.setValue(this.plugin.settings.usefrontmatter)
+			.onChange(async (value) => {
+			  this.plugin.settings.usefrontmatter = value;
+			  await this.plugin.saveSettings();
+			})
+		);
+
+		new Setting(containerEl)
+		.setName('Include labels of canvas elements')
+		.setDesc('Makes connections descriptions usable in target document')
+		.addToggle(toggle =>
+			toggle.setValue(this.plugin.settings.useedgelabels)
+			.onChange(async (value) => {
+			  this.plugin.settings.useedgelabels = value;
+			  await this.plugin.saveSettings();
+			})
+		);
+
+	}
+  }
 
 export default class Canvas2DocumentPlugin extends Plugin {
 	fsadapter: FileSystemAdapter;
 
 	async onload() {
+		await this.loadSettings();
 	
+		this.addSettingTab(new C2DSettingTab(this.app, this));
+
 		// this.fsadapter = this.app.vault.adapter as FileSystemAdapter;
 		 if (this.app.vault.adapter instanceof FileSystemAdapter) {
 			this.fsadapter = this.app.vault.adapter as FileSystemAdapter;
@@ -46,10 +99,27 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			},
 		});
 
+		this.addRibbonIcon("image-down", "C2D Step 1 - Convert Canvas to draft doc", () => {
+			this.app.commands.executeCommandById("canvas2document:run-conversion");
+		});
+		
+		this.addRibbonIcon("file-input", "C2D Step 2 - Make cleared document", () => {
+			this.app.commands.executeCommandById("canvas2document:run-redoc");
+		});
+
 	}
 
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+	
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+
+
 	onunload() {
-		// TODO cleaning up
+		// TODO: cleaning up
 	}
 
 	async readC2Dtarget(): Promise<number> {
@@ -73,15 +143,33 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		return content;
 	}	
 
-
 	async writeC2Doc(canvStruct) {
 
 		let activeFile = this.app.workspace.getActiveFile();
 		let mdFolderPath: string = path.dirname(activeFile.path);
 
-		// TODO also for links, not just embeddings
-		const pattern = /\!\[\[([^[\]]+)\]\]/g;
-		const matches = canvStruct.match(pattern);
+		const regex = /\!\[\[([^[\]]+)\]\]|<iframe\s+[^>]*src="(.*?)"/g;
+
+		const matches: { type: string; value: string }[] = [];
+		let match;
+		while ((match = regex.exec(canvStruct)) !== null) {
+			if (match[1]) {
+				matches.push(match[1]);
+			} else if (match[2]) {
+				matches.push(match[2]);
+			}
+		}
+
+		const edgelabelpattern = /<edgelabel\s+(?:data="(.*?)")?>(.*?)<\/edgelabel>/g;
+		const matchesedgelabel: { content: string; data?: string }[] = [];
+
+		let matchel;
+		while ((matchel = edgelabelpattern.exec(canvStruct)) !== null) {
+			matchesedgelabel.push({
+				data: matchel[1], // Captured `data` attribute (optional)
+				content: matchel[2], // Captured inner content
+			});
+		}
 
 		let doccontentstring = "> [!success] This is your converted and cleared document from Canvas2Document\n\> (you can delete this infobox)\n\n"
 
@@ -106,6 +194,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			filenames.push(embeddedfilename);
 		});
 
+
 		const fileContents = await Promise.all(
 			textfilenames.map(
 			  async (file) => [file, await this.app.vault.cachedRead(this.app.vault.getAbstractFileByPath(file))] as const,
@@ -113,6 +202,18 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	    );
 
 		for (const xfile of filenames) {
+
+			if (this.settings.useedgelabels) {
+
+				matchesedgelabel.forEach(label => {
+					if (xfile === label.data) {
+						doccontentstring += "> [!info] (edge label in canvas for the following entry:) \"" + label.content + "\"\n\n"
+					}
+				});	
+
+			}
+
+
 			if (xfile.endsWith(".md")) {
 				const found = fileContents.find((element) => element[0] == xfile);
 
@@ -122,7 +223,19 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					doccontentstring += "# " + name + "\n\n"
 				}
 
-				doccontentstring += found[1] + "\n\n"
+				const frontMatterInfo = getFrontMatterInfo(found[1]);
+
+				let textfilestring = ""
+				
+				if (this.settings.usefrontmatter && frontMatterInfo.exists) {
+					textfilestring = found[1].substring(frontMatterInfo.contentStart);
+				} else {
+					textfilestring = found[1]
+				}
+
+				doccontentstring += textfilestring + "\n\n"
+			} else if (xfile.startsWith("http")) {
+				doccontentstring += "<iframe width=500 height=300 src=\"" + xfile + "\"></iframe>\n\n"
 			} else {
 				doccontentstring += "![[" + xfile + "]]\n\n"
 			}
@@ -159,9 +272,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			}
 			
 			await this.fsadapter.write(docFilename, doccontentstring);
-
-
-
 
 			// await this.app.vault.create(docFilename, doccontentstring)
 		} catch (e) {
@@ -464,6 +574,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		let contentString = "> [!info] This is an automatically generated document from Plugin [Canvas2Document](https://github.com/slnsys/obsidian-canvas2document)\n\> arrange the document as you need with the outline, then call *Clear canvas2document target document*\n\n"
 
+
 		for (const element of content) {
 			
 			let cnfname = ""
@@ -496,7 +607,12 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const firstline = found[5].split('\n')[0]
 						const found5 = firstline.replace(/#/g, "")
 
-						contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+						if (edge.label != undefined) {
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + cnfname + "\">" + edge.label + "</edgelabel>\")\n"
+						} else {
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+						}
+
 					} 
 				}
 
@@ -533,7 +649,12 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const firstline = found[5].split('\n')[0]
 						const found5 = firstline.replace(/#/g, "")
 
-						contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+						if (edge.label != undefined) {
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + edge.label + "</edgelabel>\")\n"
+						} else {
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+						}
+
 					} 
 				}
 
@@ -542,7 +663,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				if (element[4] == "contentyoutube") {
 					contentString += "\n ![](" + element[2] + ")\n\n"
 				} else if (element[4] == "contentlink") {
-					contentString += "\n <iframe src=\"" + element[2] + "\"></iframe>\n\n"
+					contentString += "\n <iframe width=500 height=300 src=\"" + element[2] + "\"></iframe>\n\n"
 				}
 
 			} else if (element[1] == "file") {
@@ -560,13 +681,19 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							const found5 = firstline.replace(/#/g, "")
 
 							contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
+
 						} 
 						if (edge.toNode == element[0]) {
 							const found = content.find((element) => element[0] == edge.fromNode);
 							const firstline = found[5].split('\n')[0]
 							const found5 = firstline.replace(/#/g, "")	
 
-							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+							if (edge.label != undefined) {
+								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + edge.label + "</edgelabel>\")\n"
+							} else {
+								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+							}
+
 						} 
 					}
 					// starttag meta data block
@@ -574,9 +701,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				
 					//Embedding media specific
 					if (element[4] == "contentpdf") {
-						contentString += "\n ![[" + element[2] + "#height=500]]\n\n"
+						contentString += "\n ![[" + element[2] + "]]\n\n"
 					} else if (element[4] == "contentimage") {
-						contentString += "\n ![[" + element[2] + "|500]]\n\n"
+						contentString += "\n ![[" + element[2] + "]]\n\n"
 					}				
 
 				} else {
@@ -594,13 +721,18 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							const found5 = firstline.replace(/#/g, "")
 
 							contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
+
 						} 
 						if (edge.toNode == element[0]) {
 							const found = content.find((element) => element[0] == edge.fromNode);
 							const firstline = found[5].split('\n')[0]
 							const found5 = firstline.replace(/#/g, "")	
 
-							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+							if (edge.label != undefined) {
+								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + edge.label + "</edgelabel>\")\n"
+							} else {
+								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+							}
 						} 
 					}
 				
@@ -608,8 +740,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					contentString += "\n ![[" +  element[2] + "]]\n\n"
 				}
 			}
-
-
 		}
 
    	    try {
