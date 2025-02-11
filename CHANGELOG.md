@@ -1,13 +1,16 @@
 # Changelog for Obsidian Plugin **Canvas2Document**
 
 ## 2025-02-11: 1.3.0 support for Edge labels, YAML frontmatter, Ribbon buttons
+**Improvements**
 - support reading embedded YAML frontmatter in MD documents (toggable via settings)
 - support reading edge labels in Canvas (toggable via settings)
 - added action buttons for the Obsidian ribbon bar
-- added a settings page
-- verified testing on Linux and MacOS
 - support conversion of embedded online links like all other media types
+
+**Fixes/Testing**
+- verified testing on Linux and MacOS
 - optimized display size of embedded media (images, pdf, online links)
+- added a settings page
 
 ## 2024-11-12: 1.2.3 Bugfix Canvas embedding and support for other embedded file types
 - fixed crash when having special canvas embedding
