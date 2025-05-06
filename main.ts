@@ -7,11 +7,13 @@ import { C2DSettingTab } from './settings';
 interface C2DSettings {
 	usefrontmatter: boolean,
 	useedgelabels: boolean,
+	autooverwrite: boolean
 }
 
 const DEFAULT_SETTINGS: Partial<C2DSettings> = {
 	usefrontmatter: true,
 	useedgelabels: true,
+	autooverwrite: false
 };
 
 
@@ -40,12 +42,23 @@ export class C2DSettingTab extends PluginSettingTab {
 		);
 
 		new Setting(containerEl)
-		.setName('Include labels of canvas elements')
+		.setName('Include labels of canvas edges (connections)')
 		.setDesc('Makes connections descriptions usable in target document')
 		.addToggle(toggle =>
 			toggle.setValue(this.plugin.settings.useedgelabels)
 			.onChange(async (value) => {
 			  this.plugin.settings.useedgelabels = value;
+			  await this.plugin.saveSettings();
+			})
+		);
+
+		new Setting(containerEl)
+		.setName('Overwrite existing target documents without confirmation')
+		.setDesc('User confirmation is not needed to overwrite existing target documents')
+		.addToggle(toggle =>
+			toggle.setValue(this.plugin.settings.autooverwrite)
+			.onChange(async (value) => {
+			  this.plugin.settings.autooverwrite = value;
 			  await this.plugin.saveSettings();
 			})
 		);
@@ -194,10 +207,10 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			filenames.push(embeddedfilename);
 		});
 
-
 		const fileContents = await Promise.all(
 			textfilenames.map(
-			  async (file) => [file, await this.app.vault.cachedRead(this.app.vault.getAbstractFileByPath(file))] as const,
+			async (file) => [file, await this.app.vault.cachedRead(this.app.vault.getAbstractFileByPath(file))] as const,
+			//   async (file) => [file, await this.app.vault.adapter.read(file)] as const,
 			),
 	    );
 
@@ -228,9 +241,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				let textfilestring = ""
 				
 				if (this.settings.usefrontmatter && frontMatterInfo.exists) {
-					textfilestring = found[1].substring(frontMatterInfo.contentStart);
-				} else {
 					textfilestring = found[1]
+				} else {
+					textfilestring = found[1].substring(frontMatterInfo.contentStart);
 				}
 
 				doccontentstring += textfilestring + "\n\n"
@@ -243,17 +256,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		let docFilename
 		if (mdFolderPath == ".") {
-	    	docFilename = activeFile.basename + "_fromC2D.md"
+	    	docFilename = activeFile.basename + "_final.md"
 		} else {
-			docFilename = mdFolderPath + "/" + activeFile.basename + "_fromC2D.md"					
+			docFilename = mdFolderPath + "/" + activeFile.basename + "_final.md"					
 		}
 
 		try {
-
-
 			const exists = await this.fsadapter.exists(docFilename);
-				
-			if (exists) {
+
+			if (exists && !this.settings.autooverwrite) {
 			  const confirmed = await new Promise(resolve => {
 				const notice = new Notice('File ' + docFilename + ' already exists. Overwrite?', 0);
 				notice.noticeEl.createEl('button', {text: 'Yes'}).onclick = () => {
@@ -608,9 +619,10 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const found5 = firstline.replace(/#/g, "")
 
 						if (edge.label != undefined) {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + cnfname + "\">" + edge.label + "</edgelabel>\")\n"
+							const sanitizedLabel = edge.label.replace(/\n/g, " - ");
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + cnfname + "\">" + sanitizedLabel + "</edgelabel>\")\n";
 						} else {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n";
 						}
 
 					} 
@@ -650,7 +662,8 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const found5 = firstline.replace(/#/g, "")
 
 						if (edge.label != undefined) {
-							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + edge.label + "</edgelabel>\")\n"
+							const sanitizedLabel = edge.label.replace(/\n/g, " - ");
+							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + sanitizedLabel + "</edgelabel>\")\n"
 						} else {
 							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 						}
@@ -689,7 +702,8 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							const found5 = firstline.replace(/#/g, "")	
 
 							if (edge.label != undefined) {
-								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + edge.label + "</edgelabel>\")\n"
+								const sanitizedLabel = edge.label.replace(/\n/g, " - ");
+								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + sanitizedLabel + "</edgelabel>\")\n"
 							} else {
 								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 							}
@@ -729,7 +743,8 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							const found5 = firstline.replace(/#/g, "")	
 
 							if (edge.label != undefined) {
-								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + edge.label + "</edgelabel>\")\n"
+								const sanitizedLabel = edge.label.replace(/\n/g, " - ");
+								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]] " + "(\"<edgelabel data=\"" + element[2] + "\">" + sanitizedLabel + "</edgelabel>\")\n"
 							} else {
 								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 							}
@@ -745,18 +760,18 @@ export default class Canvas2DocumentPlugin extends Plugin {
    	    try {
 				const exists = await this.fsadapter.exists(canvasFilename);
 				
-				if (exists) {
-				  const confirmed = await new Promise(resolve => {
-					const notice = new Notice('File ' + canvasFilename + ' already exists. Overwrite?', 0);
-					notice.noticeEl.createEl('button', {text: 'Yes'}).onclick = () => {
-					  notice.hide();
-					  resolve(true);
-					};
-					notice.noticeEl.createEl('button', {text: 'No'}).onclick = () => {
-					  notice.hide();
-					  resolve(false);
-					};
-				  });
+				if (exists && !this.settings.autooverwrite) {
+					const confirmed = await new Promise(resolve => {
+						const notice = new Notice('File ' + canvasFilename + ' already exists. Overwrite?', 0);
+						notice.noticeEl.createEl('button', {text: 'Yes'}).onclick = () => {
+						notice.hide();
+						resolve(true);
+						};
+						notice.noticeEl.createEl('button', {text: 'No'}).onclick = () => {
+						notice.hide();
+						resolve(false);
+						};
+				    });
 				  
 				  if (!confirmed) {
 					return false; // User chose not to overwrite
