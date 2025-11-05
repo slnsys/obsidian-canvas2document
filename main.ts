@@ -1,19 +1,21 @@
-import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter, Setting, PluginSettingTab, getFrontMatterInfo } from 'obsidian';
+import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter, Setting, PluginSettingTab, getFrontMatterInfo, ItemView, Modal } from 'obsidian';
 // import * as fs from 'fs';
 import * as path from 'path';
 import { exit } from 'process';
-import { C2DSettingTab } from './settings';
+// Note: C2DSettingTab is declared in this file, do not import from './settings'
 
 interface C2DSettings {
 	usefrontmatter: boolean,
 	useedgelabels: boolean,
-	autooverwrite: boolean
+	autooverwrite: boolean,
+	useselection: boolean
 }
 
 const DEFAULT_SETTINGS: Partial<C2DSettings> = {
 	usefrontmatter: true,
 	useedgelabels: true,
-	autooverwrite: false
+	autooverwrite: false,
+	useselection: false
 };
 
 
@@ -63,11 +65,25 @@ export class C2DSettingTab extends PluginSettingTab {
 			})
 		);
 
+		new Setting(containerEl)
+		.setName('Use selection modes for partly conversion')
+		.setDesc('When enabled, only nodes selected or color tagged will be converted (partial conversion).')
+		.addToggle(toggle =>
+			toggle.setValue(this.plugin.settings.useselection)
+			.onChange(async (value) => {
+			  this.plugin.settings.useselection = value;
+			  await this.plugin.saveSettings();
+			})
+		);
+
 	}
   }
 
 export default class Canvas2DocumentPlugin extends Plugin {
 	fsadapter: FileSystemAdapter;
+
+	// plugin settings (populated in loadSettings())
+	settings: C2DSettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -86,15 +102,117 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			id: "run-conversion",
 			name: "Step 1 - Convert canvas to a longform document",
 			callback: async () => {
-				const canvStruct = await this.readCanvasStruct();
-				if (canvStruct == false) {
-					new Notice(`this is not a canvas file`);
-					return;
+
+				let selectedNodes = [];
+
+				const canvasView = this.app.workspace.getActiveViewOfType(ItemView);
+				if (canvasView?.getViewType() == 'canvas') {
+					const canvas = (canvasView as any).canvas;
+					const selection: any = Array.from(canvas.selection);
+
+					// Create modal dialog with radio buttons
+					
+					const modal = new Modal(this.app);
+					modal.titleEl.setText("Canvas2Document Conversion Mode");
+
+					// Add an image
+					const imageDiv = modal.contentEl.createDiv();
+					imageDiv.addClass("modal-image-container");
+					const image = imageDiv.createEl("img");
+					// Use bundled image inside plugin images folder
+					// TODO why obsidian prefix in plugin name?
+					const bin = await this.app.vault.adapter.readBinary(".obsidian/plugins/obsidian-canvas2document/images/c2d-modal.png");
+					const url = URL.createObjectURL(new Blob([bin], { type: 'image/png' }));
+					console.log("modal image url: " + url);
+					image.src = url;
+					image.alt = "Canvas2Document Conversion";
+					image.style.width = "300px";
+					image.style.height = "auto";
+					image.style.marginBottom = "20px";
+
+					// Create radio button group
+					const radioGroup = modal.contentEl.createDiv();
+					radioGroup.addClasses(["modal-content"]);
+
+					let selectedOption = "all"; // Default option
+
+					// Create radio buttons
+					const createRadioOption = (value: string, label: string) => {
+						const container = radioGroup.createDiv();
+						container.addClass("radio-container");
+						
+						const radio = container.createEl("input", { type: "radio", value });
+						radio.name = "conversion-mode";
+						radio.checked = value === selectedOption;
+						
+						radio.onchange = () => {
+							selectedOption = value;
+						};
+						
+						container.createEl("label", { text: label }).insertAfter(radio);
+					};
+
+					createRadioOption("selected", "Convert selected nodes only");
+					createRadioOption("all", "Convert all nodes");
+					createRadioOption("color", "Convert color tagged nodes");
+
+					// Add buttons
+					const buttonDiv = modal.contentEl.createDiv();
+					buttonDiv.addClasses(["modal-button-container"]);
+
+					buttonDiv.createEl("button", { text: "Continue" }).onclick = async () => {
+						this.settings.useselection = selectedOption !== "all";
+
+						if (selection && selection.length > 0) {
+							selectedNodes = selection.map((node) => ({
+								id: node.id,
+								color: node.color,
+							}));
+						} else {
+							selectedNodes = [];
+						}
+						// const selectedNodes = selection.map(node => ({
+						// 	id: node.id,
+						// 	color: node.color
+						// }));
+
+						console.log("selected nodes:");
+						console.log(selectedNodes);
+
+						console.log("selection in canvas");
+						console.log(selection);
+						// if (selection.length > 0) {
+						// 	new Notice(`Unselect all nodes to convert the entire canvas`);
+						// 	return;
+						// }
+
+						const canvStruct = await this.readCanvasStruct();
+						if (canvStruct == false) {
+							new Notice(`this is not a canvas file`);
+							return;
+						}
+
+						let [contents, myparsed_data] = await this.readCanvasData(canvStruct, selectedNodes);
+						console.log("parsed canvas data:");
+						console.log(myparsed_data);
+						console.log("converted contents:");
+						console.log(contents);
+
+
+						const result = await this.writeCanvDocFile(contents, canvStruct, myparsed_data);
+
+						modal.close();
+					};
+
+					buttonDiv.createEl("button", { text: "Cancel" }).onclick = () => {
+						modal.close();
+					};
+
+					modal.open();
+
+
 				}
 
-				let [contents, myparsed_data] = await this.readCanvasData(canvStruct);
-
-				const result = await this.writeCanvDocFile(contents, canvStruct, myparsed_data);
 
 			},
 		});
@@ -317,7 +435,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		return content;
 	}	
 
-	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach):Promise<boolean> {
+	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes):Promise<boolean> {
 
 		runcounterfunc++
 		if (runcounterfunc > 30) {
@@ -333,8 +451,16 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			const nodeentry = myparsed_data.nodes.find(entry => entry.id === child);
 	
 			if (! handledNodes.has(child)) {
-				const result = await this.formatNode(nodeentry, 6)
-				fileContents.push(result);
+				const result = await this.formatNode(nodeentry, 6);
+
+				if (this.settings.useselection && selectedNodes.length > 0) {
+					const foundSelected = selectedNodes.find(entry => entry.id === child);
+					if (foundSelected) {
+						fileContents.push(result);
+					}
+				} else {
+					fileContents.push(result);
+				}
 				handledNodes.add(child);
 			} else {
 				limitrecurseNodes++
@@ -347,7 +473,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			let children = myparsed_data.edges2.filter(edge => edge.fromNode === child).map(edge => edge.toNode);
 			
 			if (children.length > 0) {
-				const continueRecursion = await this.findAllXChildren(children, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach);
+				const continueRecursion = await this.findAllXChildren(children, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes);
 				if (!continueRecursion) return false;
 			}
 		};
@@ -357,7 +483,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	}
 
 	
-	async traverseNodes(initialNodes, myparsed_data, fileContents, handledNodes) {
+	async traverseNodes(initialNodes, myparsed_data, fileContents, handledNodes, selectedNodes) {
 
 		for (const node of initialNodes) {
 
@@ -366,7 +492,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			// is  skiphandledNodes is true, check if node is already handled
 			if (! handledNodes.has(node)) {
 				const result = await this.formatNode(nodeentry, 1);
-				fileContents.push(result);
+
+				if (this.settings.useselection && selectedNodes.length > 0) {
+					const foundSelected = selectedNodes.find(entry => entry.id === node);
+					if (foundSelected) {
+						fileContents.push(result);
+					}
+				} else {
+					fileContents.push(result);
+				}
 			}
 
 			handledNodes.add(node);
@@ -381,7 +515,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 				if (! handledNodes.has(child1)) {
 					const result = await this.formatNode(nodeentry, 2);
-					fileContents.push(result);
+
+					if (this.settings.useselection && selectedNodes.length > 0) {
+						const foundSelected = selectedNodes.find(entry => entry.id === child1);
+						if (foundSelected) {
+							fileContents.push(result);
+						}
+					} else {
+						fileContents.push(result);
+					}
 				}
 
 				handledNodes.add(child1);
@@ -396,7 +538,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 					if (! handledNodes.has(child2)) {
 						const result = await this.formatNode(nodeentry, 3);
-						fileContents.push(result);
+
+						if (this.settings.useselection && selectedNodes.length > 0) {
+							const foundSelected = selectedNodes.find(entry => entry.id === child2);
+							if (foundSelected) {
+								fileContents.push(result);
+							}
+						} else {
+							fileContents.push(result);
+						}
 					}
 
 					handledNodes.add(child2);
@@ -412,7 +562,16 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 						if (! handledNodes.has(child3)) {
 							const result = await this.formatNode(nodeentry, 4);
-							fileContents.push(result);
+
+							if (this.settings.useselection && selectedNodes.length > 0) {
+								const foundSelected = selectedNodes.find(entry => entry.id === child3);
+								if (foundSelected) {
+									fileContents.push(result);
+								}
+							} else {
+								fileContents.push(result);
+							}
+
 						}
 						
 						handledNodes.add(child3);
@@ -427,7 +586,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 							if (! handledNodes.has(child4)) {
 								const result = await this.formatNode(nodeentry, 5);
-								fileContents.push(result);
+
+								if (this.settings.useselection && selectedNodes.length > 0) {
+									const foundSelected = selectedNodes.find(entry => entry.id === child4);
+									if (foundSelected) {
+										fileContents.push(result);
+									}
+								} else {
+									fileContents.push(result);
+								}
 							}
 
 							handledNodes.add(child4);
@@ -443,7 +610,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	
 								if (! handledNodes.has(child5)) {
 									const result = await this.formatNode(nodeentry, 6);
-									fileContents.push(result);
+
+									if (this.settings.useselection && selectedNodes.length > 0) {
+										const foundSelected = selectedNodes.find(entry => entry.id === child5);
+										if (foundSelected) {
+											fileContents.push(result);
+										}
+									} else {
+										fileContents.push(result);
+									}
 								}
 
 								handledNodes.add(child5);
@@ -455,7 +630,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 								let runcounterforeach: number = 0
 								let limitrecurseNodes: number = 0
 
-								const result = await this.findAllXChildren(children6, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach);
+								const result = await this.findAllXChildren(children6, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes);
 							}
 						}
 					}
@@ -464,7 +639,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		}
 	}
 
-	async readCanvasData(struct) {
+	async readCanvasData(struct, selectedNodes) {
 		// TODO: nochmal nach https://docs.obsidian.md/Plugins/Vault, read all files
 		// input liste eben aus canvas-JSON alle nodes
 
@@ -480,7 +655,16 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				// TODO later we also handle groups
 				groupNodes.add(node.id);
 			} else {
-				singleNodeIDs.add(node.id);
+				// if use selection is on, check if node is in selectedNodes
+				if (this.settings.useselection && selectedNodes.length > 0) {
+					console.log("checking node id " + node.id + " in selected nodes")
+					const foundSelected = selectedNodes.find(entry => entry.id === node.id);
+					if (foundSelected) {
+						singleNodeIDs.add(node.id);
+					}
+				} else {
+					singleNodeIDs.add(node.id);
+				}
 			}
 		});
 
@@ -495,9 +679,21 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			if (groupNodes.has(edge.fromNode) || groupNodes.has(edge.toNode)) {
 				// remove edge from myparsed_data
 			} else {
+				// TODO where used fromNodes and toNodes?
 				fromNodes.add(edge.fromNode);
 				toNodes.add(edge.toNode);
-				groupClearedEdges.push(edge)
+
+
+				if (this.settings.useselection && selectedNodes.length > 0) {
+					const fromNodeSelected = selectedNodes.find(entry => entry.id === edge.fromNode);
+					const toNodeSelected = selectedNodes.find(entry => entry.id === edge.toNode);
+					if (fromNodeSelected && toNodeSelected) {
+						groupClearedEdges.push(edge);
+					}
+				} else {
+					groupClearedEdges.push(edge);
+				}
+
 			}
 		});
 		myparsed_data.edges2=groupClearedEdges;
@@ -513,13 +709,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		}
 
 		// first round of nodes without parents
-		const traverseresult = await this.traverseNodes(nodesWithoutParents, myparsed_data, fileContents, handledNodes);
+		const traverseresult = await this.traverseNodes(nodesWithoutParents, myparsed_data, fileContents, handledNodes, selectedNodes);
 
 		const diff = new Set([...singleNodeIDs].filter(x => !handledNodes.has(x)));
 		
 		// if diff is not empty, we have nodes without parents and give them to findAllXChildren again
 		if (diff.size > 0) {
-			const traverseresult = await this.traverseNodes(diff, myparsed_data, fileContents, handledNodes);
+			const traverseresult = await this.traverseNodes(diff, myparsed_data, fileContents, handledNodes, selectedNodes);
 		}
 
 		return [fileContents, myparsed_data];
@@ -605,6 +801,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				contentString += element[2] + " ^" + element[0] + "\n\n"
 				contentString += "> [!tip] link navigation from the canvas\n"
 
+				let foundsometolinks = false;
+				let foundsomefromlinks = false;
+
 				for (const edge of myparsed_data.edges2) {
 					if (edge.fromNode == element[0]) {
 						const found = content.find((element) => element[0] == edge.toNode);
@@ -612,6 +811,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const found5 = firstline.replace(/#/g, "")
 
 						contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
+						foundsometolinks = true;
 					} 
 					if (edge.toNode == element[0]) {
 						const found = content.find((element) => element[0] == edge.fromNode);
@@ -624,9 +824,17 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						} else {
 							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n";
 						}
-
-					} 
+						foundsomefromlinks = true;
+					}
 				}
+
+				if (!foundsomefromlinks) {
+					contentString += "> No links from this node\n";
+				} 
+				if (!foundsometolinks) {
+					contentString += "> No links to other nodes from this node\n";
+				}
+
 
 				//Embedding
 				contentString += "\n ![[" + cnfname + "]]\n\n"
@@ -648,6 +856,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				contentString += element[2] + " ^" + element[0] + "\n\n"
 				contentString += "> [!tip] link navigation from the canvas\n"
 
+				let foundsometolinks = false;
+				let foundsomefromlinks = false;
+
 				for (const edge of myparsed_data.edges2) {
 					if (edge.fromNode == element[0]) {
 						const found = content.find((element) => element[0] == edge.toNode);
@@ -655,6 +866,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const found5 = firstline.replace(/#/g, "")
 
 						contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
+						foundsometolinks = true;
 					} 
 					if (edge.toNode == element[0]) {
 						const found = content.find((element) => element[0] == edge.fromNode);
@@ -667,8 +879,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						} else {
 							contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 						}
-
+						foundsomefromlinks = true;
 					} 
+				}
+
+				if (!foundsomefromlinks) {
+					contentString += "> No links from this node\n";
+				} 
+				if (!foundsometolinks) {
+					contentString += "> No links to other nodes from this node\n";
 				}
 
 				//Embedding media specific
@@ -686,6 +905,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					contentString += element[2] + " ^" + element[0] + "\n\n"
 					// TODO linking box noch in funktion auslagern
 					contentString += "> [!tip] link navigation from the canvas\n"
+					
+					let foundsometolinks = false;
+					let foundsomefromlinks = false;
 
 					for (const edge of myparsed_data.edges2) {
 						if (edge.fromNode == element[0]) {
@@ -694,7 +916,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							const found5 = firstline.replace(/#/g, "")
 
 							contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
-
+							foundsometolinks = true;
 						} 
 						if (edge.toNode == element[0]) {
 							const found = content.find((element) => element[0] == edge.fromNode);
@@ -707,9 +929,17 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							} else {
 								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 							}
-
+							foundsomefromlinks = true;
 						} 
 					}
+
+					if (!foundsomefromlinks) {
+						contentString += "> No links from this node\n";
+					} 
+					if (!foundsometolinks) {
+						contentString += "> No links to other nodes from this node\n";
+					}
+
 					// starttag meta data block
 					// contentString += "\n%%\ncanvas2document plugin metadata header end\n%%\n"
 				
@@ -727,6 +957,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					contentString += element[2] + " ^" + element[0] + "\n\n"
 					contentString += "> [!tip] link navigation from the canvas\n"
 
+					let foundsometolinks = false;
+					let foundsomefromlinks = false;
+
 					for (const edge of myparsed_data.edges2) {
 
 						if (edge.fromNode == element[0]) {
@@ -735,7 +968,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							const found5 = firstline.replace(/#/g, "")
 
 							contentString += "> linking to: [[#^" + edge.toNode + "|" + found5 + "]]\n"
-
+							foundsometolinks = true;
 						} 
 						if (edge.toNode == element[0]) {
 							const found = content.find((element) => element[0] == edge.fromNode);
@@ -748,9 +981,17 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							} else {
 								contentString += "> linked from: [[#^" + edge.fromNode + "|" + found5 + "]]\n"
 							}
+							foundsomefromlinks = true;
 						} 
 					}
 				
+					if (!foundsomefromlinks) {
+						contentString += "> No links from this node\n";
+					} 
+					if (!foundsometolinks) {
+						contentString += "> No links to other nodes from this node\n";
+					}
+
 					// Embedding
 					contentString += "\n ![[" +  element[2] + "]]\n\n"
 				}
