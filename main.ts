@@ -1,4 +1,4 @@
-import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter, Setting, PluginSettingTab, getFrontMatterInfo, ItemView, Modal } from 'obsidian';
+import { normalizePath, Workspace, WorkspaceLeaf, TFile, App, Editor, MarkdownView, Notice, Plugin, FileSystemAdapter, Setting, PluginSettingTab, getFrontMatterInfo, ItemView, Modal} from 'obsidian';
 // import * as fs from 'fs';
 import * as path from 'path';
 import { exit } from 'process';
@@ -104,14 +104,44 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			callback: async () => {
 
 				let selectedNodes = [];
+				let totalNodes = 0;
+				let selectedNodesCount = 0;
+				let colorValues = [];
 
 				const canvasView = this.app.workspace.getActiveViewOfType(ItemView);
 				if (canvasView?.getViewType() == 'canvas') {
 					const canvas = (canvasView as any).canvas;
 					const selection: any = Array.from(canvas.selection);
 
+				if (selection && selection.length > 0) {
+					selectedNodes = selection.map(
+						(node) => ({
+							id: node.id,
+							color: node.color,
+						})
+					);
+				} else {
+					selectedNodes = [];
+				}
+
 					// Create modal dialog with radio buttons
 					
+					const canvStruct = await this.readCanvasStruct();
+					if (canvStruct == false) {
+						new Notice(`this is not a canvas file`);
+						return;
+					}
+
+					// pre analysis of canvas data
+					let [totalNodes, selectedNodesCount, colorValues] = await this.readCanvasData_pre(canvStruct, selectedNodes);
+					console.log("parsed canvas data total:");
+					console.log(totalNodes);
+					console.log("parsed canvas data selected:");
+					console.log(selectedNodesCount);
+					console.log("parsed canvas data color values:");
+					console.log(colorValues);
+
+
 					const modal = new Modal(this.app);
 					modal.titleEl.setText("Canvas2Document Conversion Mode");
 
@@ -156,6 +186,85 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					createRadioOption("all", "Convert all nodes");
 					createRadioOption("color", "Convert color tagged nodes");
 
+					const usedColors = new Set<string>();
+						colorValues.forEach(cval => {
+							usedColors.add(cval);
+						});
+
+						const colorDropdown = radioGroup.createDiv();
+						colorDropdown.addClass("dropdown-container");
+						const label = colorDropdown.createEl("label", { text: "Filter by color: " });
+						const select = colorDropdown.createEl("select");
+						select.createEl("option", { text: "All colors", value: "" });
+						usedColors.forEach(color => {
+							const optionEl = select.createEl("option", { text: color, value: color });
+
+							// Add a single change listener (guarded so we only attach it once) that paints the select itself
+							if (!select.dataset.colorListener) {
+								select.addEventListener('change', () => {
+									const val = select.value;
+									if (!val) {
+										select.style.backgroundColor = '';
+										select.style.color = '';
+										selectedColor = '';
+										return;
+									}
+									try {
+										const getRGB = (c: string) => {
+											if (c.startsWith("rgb")) {
+												const nums = c.match(/\d+/g)?.map(Number) ?? [0, 0, 0];
+												return nums.slice(0, 3);
+											}
+											let hex = c.replace("#", "").trim();
+											if (hex.length === 3) hex = hex.split("").map(ch => ch + ch).join("");
+											const bigint = parseInt(hex, 16);
+											return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+										};
+
+										const [r, g, b] = getRGB(val);
+										const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+										select.style.backgroundColor = val;
+										select.style.color = yiq >= 128 ? "#000" : "#fff";
+									} catch (e) {
+										// ignore invalid color formats
+										select.style.backgroundColor = '';
+										select.style.color = '';
+									}
+									selectedColor = val;
+								});
+								select.dataset.colorListener = '1';
+							}
+
+							// compute readable text color (black or white) for contrast
+							try {
+								const getRGB = (c: string) => {
+									if (c.startsWith("rgb")) {
+										const nums = c.match(/\d+/g)?.map(Number) ?? [0, 0, 0];
+										return nums.slice(0, 3);
+									}
+									let hex = c.replace("#", "").trim();
+									if (hex.length === 3) hex = hex.split("").map(ch => ch + ch).join("");
+									const bigint = parseInt(hex, 16);
+									return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+								};
+
+								const [r, g, b] = getRGB(color);
+								const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+								(optionEl as HTMLElement).style.backgroundColor = color;
+								(optionEl as HTMLElement).style.color = yiq >= 128 ? "#000" : "#fff";
+							} catch (e) {
+								// ignore invalid color formats
+							}
+							select.createEl("option", { text: color, value: color });
+						});
+
+						let selectedColor = "";
+						select.onchange = () => {
+							selectedColor = select.value;
+						};
+						console.log("used colors in canvas:");
+						console.log(usedColors);
+
 					// Add buttons
 					const buttonDiv = modal.contentEl.createDiv();
 					buttonDiv.addClasses(["modal-button-container"]);
@@ -163,14 +272,21 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					buttonDiv.createEl("button", { text: "Continue" }).onclick = async () => {
 						this.settings.useselection = selectedOption !== "all";
 
-						if (selection && selection.length > 0) {
-							selectedNodes = selection.map((node) => ({
-								id: node.id,
-								color: node.color,
-							}));
-						} else {
-							selectedNodes = [];
+						console.log("conversion mode selected: " + selectedOption);
+						console.log("use selection setting: " + this.settings.useselection);
+
+						if (selectedOption == "selected" && selection.length == 0) {
+							new Notice(`You have selected 'Convert selected nodes only' but no nodes are selected. Please select nodes or choose another conversion mode.`);
+							return;
 						}
+
+						// TODO: deliver selection val to readCanvasData()
+						let [contents, myparsed_data] = await this.readCanvasData(canvStruct, selectedNodes, selectedOption, selectedColor);
+						console.log("parsed canvas data:");
+						console.log(myparsed_data);
+						console.log("converted contents:");
+						console.log(contents);
+
 						// const selectedNodes = selection.map(node => ({
 						// 	id: node.id,
 						// 	color: node.color
@@ -180,23 +296,12 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						console.log(selectedNodes);
 
 						console.log("selection in canvas");
+
 						console.log(selection);
 						// if (selection.length > 0) {
 						// 	new Notice(`Unselect all nodes to convert the entire canvas`);
 						// 	return;
 						// }
-
-						const canvStruct = await this.readCanvasStruct();
-						if (canvStruct == false) {
-							new Notice(`this is not a canvas file`);
-							return;
-						}
-
-						let [contents, myparsed_data] = await this.readCanvasData(canvStruct, selectedNodes);
-						console.log("parsed canvas data:");
-						console.log(myparsed_data);
-						console.log("converted contents:");
-						console.log(contents);
 
 
 						const result = await this.writeCanvDocFile(contents, canvStruct, myparsed_data);
@@ -421,18 +526,25 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		/*
 		check on active file is canvas
 		*/
-		let activeFile = this.app.workspace.getActiveFile();
-		if (!activeFile || activeFile.extension != "canvas") {
-			return false;
+
+		const canvasView = this.app.workspace.getActiveViewOfType(ItemView);
+
+		if (canvasView?.getViewType() == 'canvas') {
+			const canvasFile = canvasView.file; // TFile
+			console.log("canvas file path:");
+			console.log(canvasFile?.path);
+			const path = canvasFile?.path;
+			let content = this.app.vault.cachedRead(canvasFile);
+			return content;
 		} else {
-			let mdFolderPath: string = path.dirname(activeFile.path);
+			return false;
 		}
+
 
 		// TODO: prevent reading all files, just the active file, if canvas check ok
 
 		//let actcanvasfile = app.vault.getAbstractFileByPath(activeFile);
-		let content = this.app.vault.cachedRead(activeFile);
-		return content;
+		// let content = this.app.vault.cachedRead(activeFile);
 	}	
 
 	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes):Promise<boolean> {
@@ -639,7 +751,28 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		}
 	}
 
-	async readCanvasData(struct, selectedNodes) {
+	async readCanvasData_pre(struct, selectedNodes) {
+		console.log("pre analysis of canvas data");
+		const myparsed_data = JSON.parse(struct);
+		
+		const totalNodes = myparsed_data.nodes.length;
+		const selectedNodesCount = selectedNodes.length;
+		
+		const colorValues = new Set<string>();
+		myparsed_data.nodes.forEach(node => {
+			if (node.color) {
+				colorValues.add(node.color);
+			}
+		});
+		
+		return [
+			totalNodes,
+			selectedNodesCount,
+			colorValues.size > 0 ? Array.from(colorValues) : []
+		];
+	}
+
+	async readCanvasData(struct, selectedNodes, selectionMode, selectedColor) {
 		// TODO: nochmal nach https://docs.obsidian.md/Plugins/Vault, read all files
 		// input liste eben aus canvas-JSON alle nodes
 
@@ -649,6 +782,11 @@ export default class Canvas2DocumentPlugin extends Plugin {
 
 		const singleNodeIDs = new Set();
 		const groupNodes = new Set();
+
+		console.log("selection mode: " + selectionMode);
+		console.log("selected color: " + selectedColor);
+		console.log("selected nodes in readCanvasData:");
+		console.log(selectedNodes);
 
 		myparsed_data.nodes.forEach(node => {
 			if (node.type === "group") {
@@ -663,6 +801,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						singleNodeIDs.add(node.id);
 					}
 				} else {
+					// TODO check for color tags if use selection is on with color mode
+					// so far we add all nodes
+					console.log("adding single node id " + node.id)
 					singleNodeIDs.add(node.id);
 				}
 			}
