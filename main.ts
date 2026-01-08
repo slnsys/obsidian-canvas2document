@@ -7,15 +7,13 @@ import { exit } from 'process';
 interface C2DSettings {
 	usefrontmatter: boolean,
 	useedgelabels: boolean,
-	autooverwrite: boolean,
-	useselection: boolean
+	autooverwrite: boolean
 }
 
 const DEFAULT_SETTINGS: Partial<C2DSettings> = {
 	usefrontmatter: true,
 	useedgelabels: true,
-	autooverwrite: false,
-	useselection: false
+	autooverwrite: false
 };
 
 
@@ -64,18 +62,6 @@ export class C2DSettingTab extends PluginSettingTab {
 			  await this.plugin.saveSettings();
 			})
 		);
-
-		new Setting(containerEl)
-		.setName('Use selection modes for partly conversion')
-		.setDesc('When enabled, only nodes selected or color tagged will be converted (partial conversion).')
-		.addToggle(toggle =>
-			toggle.setValue(this.plugin.settings.useselection)
-			.onChange(async (value) => {
-			  this.plugin.settings.useselection = value;
-			  await this.plugin.saveSettings();
-			})
-		);
-
 	}
   }
 
@@ -106,7 +92,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				let selectedNodes = [];
 				let totalNodes = 0;
 				let selectedNodesCount = 0;
-				let colorValues = [];
+				let colorValues_length = 0;
+				let nodesWithColor = 0;
+				let colorCounts = new Map<string, number>();
 
 				const canvasView = this.app.workspace.getActiveViewOfType(ItemView);
 				if (canvasView?.getViewType() == 'canvas') {
@@ -133,13 +121,17 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					}
 
 					// pre analysis of canvas data
-					let [totalNodes, selectedNodesCount, colorValues] = await this.readCanvasData_pre(canvStruct, selectedNodes);
+					let [totalNodes, selectedNodesCount, colorValues_length, nodesWithColor, colorCounts] = await this.readCanvasData_pre(canvStruct, selectedNodes);
 					console.log("parsed canvas data total:");
 					console.log(totalNodes);
 					console.log("parsed canvas data selected:");
 					console.log(selectedNodesCount);
 					console.log("parsed canvas data color values:");
-					console.log(colorValues);
+					console.log(colorValues_length);
+					console.log("parsed canvas data nodes with color:");
+					console.log(nodesWithColor);
+					console.log("parsed canvas data color counts:");
+					console.log(colorCounts);
 
 
 					const modal = new Modal(this.app);
@@ -167,6 +159,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					let selectedOption = "all"; // Default option
 
 					// Create radio buttons
+					
 					const createRadioOption = (value: string, label: string) => {
 						const container = radioGroup.createDiv();
 						container.addClass("radio-container");
@@ -182,14 +175,25 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						container.createEl("label", { text: label }).insertAfter(radio);
 					};
 
-					createRadioOption("selected", "Convert selected nodes only");
-					createRadioOption("all", "Convert all nodes");
-					createRadioOption("color", "Convert color tagged nodes");
+					createRadioOption("selected", "Convert selected nodes only " + `(${selectedNodesCount} selected)`);
+					createRadioOption("all", "Convert all nodes " + ` (${totalNodes} total)`);
+					createRadioOption("color", "Convert color tagged nodes " + `(${nodesWithColor} with color tags)`);
 
-					const usedColors = new Set<string>();
-						colorValues.forEach(cval => {
-							usedColors.add(cval);
+					// If there are color values, add a dropdown for color selection
+					
+					let selectedColor = "";
+
+					if (colorValues_length.length > 0) {
+						const usedColors = new Set<string>();
+
+						
+						Object.entries(colorCounts).forEach(([color, count]) => {
+							usedColors.add(color);
 						});
+
+
+						console.log("color counts:");
+						console.log(usedColors);
 
 						const colorDropdown = radioGroup.createDiv();
 						colorDropdown.addClass("dropdown-container");
@@ -197,9 +201,9 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						const select = colorDropdown.createEl("select");
 						select.createEl("option", { text: "All colors", value: "" });
 						usedColors.forEach(color => {
-							const optionEl = select.createEl("option", { text: color, value: color });
+							const count = colorCounts[color];
+							const optionEl = select.createEl("option", { text: `${color} (${count})`, value: color });
 
-							// Add a single change listener (guarded so we only attach it once) that paints the select itself
 							if (!select.dataset.colorListener) {
 								select.addEventListener('change', () => {
 									const val = select.value;
@@ -226,7 +230,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 										select.style.backgroundColor = val;
 										select.style.color = yiq >= 128 ? "#000" : "#fff";
 									} catch (e) {
-										// ignore invalid color formats
 										select.style.backgroundColor = '';
 										select.style.color = '';
 									}
@@ -235,7 +238,6 @@ export default class Canvas2DocumentPlugin extends Plugin {
 								select.dataset.colorListener = '1';
 							}
 
-							// compute readable text color (black or white) for contrast
 							try {
 								const getRGB = (c: string) => {
 									if (c.startsWith("rgb")) {
@@ -255,25 +257,23 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							} catch (e) {
 								// ignore invalid color formats
 							}
-							select.createEl("option", { text: color, value: color });
+							// select.createEl("option", { text: color, value: color });
 						});
 
-						let selectedColor = "";
 						select.onchange = () => {
 							selectedColor = select.value;
 						};
+
 						console.log("used colors in canvas:");
 						console.log(usedColors);
+					}
 
 					// Add buttons
 					const buttonDiv = modal.contentEl.createDiv();
 					buttonDiv.addClasses(["modal-button-container"]);
 
 					buttonDiv.createEl("button", { text: "Continue" }).onclick = async () => {
-						this.settings.useselection = selectedOption !== "all";
-
 						console.log("conversion mode selected: " + selectedOption);
-						console.log("use selection setting: " + this.settings.useselection);
 
 						if (selectedOption == "selected" && selection.length == 0) {
 							new Notice(`You have selected 'Convert selected nodes only' but no nodes are selected. Please select nodes or choose another conversion mode.`);
@@ -565,7 +565,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			if (! handledNodes.has(child)) {
 				const result = await this.formatNode(nodeentry, 6);
 
-				if (this.settings.useselection && selectedNodes.length > 0) {
+				if (selectionMode == "selected" && selectedNodes.length > 0) {
 					const foundSelected = selectedNodes.find(entry => entry.id === child);
 					if (foundSelected) {
 						fileContents.push(result);
@@ -595,7 +595,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	}
 
 	
-	async traverseNodes(initialNodes, myparsed_data, fileContents, handledNodes, selectedNodes) {
+	async traverseNodes(initialNodes, myparsed_data, fileContents, handledNodes, selectedNodes, selectionMode) {
 
 		for (const node of initialNodes) {
 
@@ -605,7 +605,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			if (! handledNodes.has(node)) {
 				const result = await this.formatNode(nodeentry, 1);
 
-				if (this.settings.useselection && selectedNodes.length > 0) {
+				if (selectionMode == "selected" && selectedNodes.length > 0) {
 					const foundSelected = selectedNodes.find(entry => entry.id === node);
 					if (foundSelected) {
 						fileContents.push(result);
@@ -628,7 +628,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				if (! handledNodes.has(child1)) {
 					const result = await this.formatNode(nodeentry, 2);
 
-					if (this.settings.useselection && selectedNodes.length > 0) {
+					if (selectionMode == "selected" && selectedNodes.length > 0) {
 						const foundSelected = selectedNodes.find(entry => entry.id === child1);
 						if (foundSelected) {
 							fileContents.push(result);
@@ -651,7 +651,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					if (! handledNodes.has(child2)) {
 						const result = await this.formatNode(nodeentry, 3);
 
-						if (this.settings.useselection && selectedNodes.length > 0) {
+						if (selectionMode == "selected" && selectedNodes.length > 0) {
 							const foundSelected = selectedNodes.find(entry => entry.id === child2);
 							if (foundSelected) {
 								fileContents.push(result);
@@ -675,7 +675,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 						if (! handledNodes.has(child3)) {
 							const result = await this.formatNode(nodeentry, 4);
 
-							if (this.settings.useselection && selectedNodes.length > 0) {
+							if (selectionMode == "selected" && selectedNodes.length > 0) {
 								const foundSelected = selectedNodes.find(entry => entry.id === child3);
 								if (foundSelected) {
 									fileContents.push(result);
@@ -699,7 +699,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 							if (! handledNodes.has(child4)) {
 								const result = await this.formatNode(nodeentry, 5);
 
-								if (this.settings.useselection && selectedNodes.length > 0) {
+								if (selectionMode == "selected" && selectedNodes.length > 0) {
 									const foundSelected = selectedNodes.find(entry => entry.id === child4);
 									if (foundSelected) {
 										fileContents.push(result);
@@ -723,7 +723,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 								if (! handledNodes.has(child5)) {
 									const result = await this.formatNode(nodeentry, 6);
 
-									if (this.settings.useselection && selectedNodes.length > 0) {
+									if (selectionMode == "selected" && selectedNodes.length > 0) {
 										const foundSelected = selectedNodes.find(entry => entry.id === child5);
 										if (foundSelected) {
 											fileContents.push(result);
@@ -759,16 +759,23 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		const selectedNodesCount = selectedNodes.length;
 		
 		const colorValues = new Set<string>();
+		const colorCounts = new Map<string, number>();
+		let nodesWithColor = 0;
+
 		myparsed_data.nodes.forEach(node => {
 			if (node.color) {
 				colorValues.add(node.color);
+				colorCounts.set(node.color, (colorCounts.get(node.color) ?? 0) + 1);
+				nodesWithColor++;
 			}
 		});
 		
 		return [
 			totalNodes,
 			selectedNodesCount,
-			colorValues.size > 0 ? Array.from(colorValues) : []
+			colorValues.size > 0 ? Array.from(colorValues) : [],
+			nodesWithColor,
+			Object.fromEntries(colorCounts)
 		];
 	}
 
@@ -794,7 +801,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				groupNodes.add(node.id);
 			} else {
 				// if use selection is on, check if node is in selectedNodes
-				if (this.settings.useselection && selectedNodes.length > 0) {
+				if (selectionMode == "selected" && selectedNodes.length > 0) {
 					console.log("checking node id " + node.id + " in selected nodes")
 					const foundSelected = selectedNodes.find(entry => entry.id === node.id);
 					if (foundSelected) {
@@ -825,7 +832,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				toNodes.add(edge.toNode);
 
 
-				if (this.settings.useselection && selectedNodes.length > 0) {
+				if (selectionMode == "selected" && selectedNodes.length > 0) {
 					const fromNodeSelected = selectedNodes.find(entry => entry.id === edge.fromNode);
 					const toNodeSelected = selectedNodes.find(entry => entry.id === edge.toNode);
 					if (fromNodeSelected && toNodeSelected) {
@@ -850,13 +857,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		}
 
 		// first round of nodes without parents
-		const traverseresult = await this.traverseNodes(nodesWithoutParents, myparsed_data, fileContents, handledNodes, selectedNodes);
+		const traverseresult = await this.traverseNodes(nodesWithoutParents, myparsed_data, fileContents, handledNodes, selectedNodes, selectionMode);
 
 		const diff = new Set([...singleNodeIDs].filter(x => !handledNodes.has(x)));
 		
 		// if diff is not empty, we have nodes without parents and give them to findAllXChildren again
 		if (diff.size > 0) {
-			const traverseresult = await this.traverseNodes(diff, myparsed_data, fileContents, handledNodes, selectedNodes);
+			const traverseresult = await this.traverseNodes(diff, myparsed_data, fileContents, handledNodes, selectedNodes, selectionMode);
 		}
 
 		return [fileContents, myparsed_data];
@@ -906,19 +913,37 @@ export default class Canvas2DocumentPlugin extends Plugin {
 	async writeCanvDocFile(content, convStruct, myparsed_data) {
 		// establishing the workdir
 
-		let activeFile = this.app.workspace.getActiveFile();
-		let mdFolderPath: string = path.dirname(activeFile.path);
+		const canvasView = this.app.workspace.getActiveViewOfType(ItemView);
+		const activeFile = canvasView.file;
+		console.log("writing: canvas file path:");
+		console.log(activeFile?.path);
+
+		let mdFolderPath: string = path.dirname(activeFile?.path);
 
 		let writeworkdir = mdFolderPath + "/" + activeFile.basename + "_canvas2doc-data"
 		this.fsadapter.mkdir(writeworkdir)
 
-		let canvasFile
 		let canvasFilename
 		if (mdFolderPath == ".") {
 	    	canvasFilename = activeFile.basename + "_fromCanvas.md"
 		} else {
 			canvasFilename = mdFolderPath + "/" + activeFile.basename + "_fromCanvas.md"					
 		}
+
+
+		// let activeFile = this.app.workspace.getActiveFile();
+		// let mdFolderPath: string = path.dirname(activeFile.path);
+
+		// let writeworkdir = mdFolderPath + "/" + activeFile.basename + "_canvas2doc-data"
+		// this.fsadapter.mkdir(writeworkdir)
+
+		// let canvasFile
+		// let canvasFilename
+		// if (mdFolderPath == ".") {
+	    // 	canvasFilename = activeFile.basename + "_fromCanvas.md"
+		// } else {
+		// 	canvasFilename = mdFolderPath + "/" + activeFile.basename + "_fromCanvas.md"					
+		// }
 
 		let contentString = "> [!info] This is an automatically generated document from Plugin [Canvas2Document](https://github.com/slnsys/obsidian-canvas2document)\n\> arrange the document as you need with the outline, then call *Clear canvas2document target document*\n\n"
 
