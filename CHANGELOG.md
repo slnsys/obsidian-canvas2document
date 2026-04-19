@@ -1,5 +1,14 @@
 # Changelog for Obsidian Plugin **Canvas2Document**
 
+## 2026-04-19
+- new partial conversion of canvas by selection or color tags (color tags concept by [jpmoo](https://github.com/jpmoo))
+- fix error in Canvas detection when a file-node is selected
+
+## 2025-05-06
+**Fixes, improvements, auto overwrite**
+- auto overwrite setting for target documents
+- Contains some minor fixes and improvements
+
 ## 2025-02-11: 1.3.0 support for Edge labels, YAML frontmatter, Ribbon buttons
 **Improvements**
 - support reading embedded YAML frontmatter in MD documents (toggable via settings)

@@ -18,6 +18,14 @@ The plugin reads [Obsidian's](https://obsidian.md/blog/json-canvas/) [JSON Canva
 
 # Process and usage
 The conversion process takes place in two steps:
+
+## Select conversion mode
+
+First choose a conversion mode:
+![canvas2document conv mode seletion](images/obsidian_c2d_convmode.png)
+
+
+## Output
 1. First, a document is created (with command **Convert canvas to a longform document**) that integrates the elements of the canvas in manageable blocks (navigation headings are visible in the outline). The text content is not yet written into the document, but rather just embedded.
 This allows the headings of cards and notes in the outline to be ignored, which in turn allows these blocks to be arranged or deleted at the canvas node level.
 
@@ -36,6 +44,3 @@ But an obsidian canvas can also look like this, making a simple hierarchical con
 
 <img src="images/obsidian-canvas-complex.png" alt="screensimple" width="500"/>
 
-
-# Roadmap
-* Options for selecting types of elements to convert to Doc like "only notefiles", "no media"
