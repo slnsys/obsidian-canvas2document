@@ -1,6 +1,7 @@
 # Changelog for Obsidian Plugin **Canvas2Document**
 
 ## 2026-04-19
+**Conversion modes - partial canvas**
 - new partial conversion of canvas by selection or color tags (color tags concept by [jpmoo](https://github.com/jpmoo))
 - fix error in Canvas detection when a file-node is selected
 
