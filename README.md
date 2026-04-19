@@ -22,6 +22,7 @@ The conversion process takes place in two steps:
 ## Select conversion mode
 
 First choose a conversion mode:
+
 ![canvas2document conv mode seletion](images/obsidian_c2d_convmode.png)
 
 
