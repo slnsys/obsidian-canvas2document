@@ -1032,11 +1032,15 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				}
 
 				if (!foundsomefromlinks) {
-					contentString += "> No links from this node\n";
+					contentString += "> No links to this node\n";
 				} 
 				if (!foundsometolinks) {
 					contentString += "> No links to other nodes from this node\n";
 				}
+				if (!foundsomefromlinks && !foundsometolinks) {
+					contentString += "> **this is a standalone node, handle extra for outline**\n";
+				}
+
 
 
 				//Embedding
@@ -1087,10 +1091,13 @@ export default class Canvas2DocumentPlugin extends Plugin {
 				}
 
 				if (!foundsomefromlinks) {
-					contentString += "> No links from this node\n";
+					contentString += "> No links to this node\n";
 				} 
 				if (!foundsometolinks) {
 					contentString += "> No links to other nodes from this node\n";
+				}
+				if (!foundsomefromlinks && !foundsometolinks) {
+					contentString += "> **this is a standalone node, handle extra for outline**\n";
 				}
 
 				//Embedding media specific
@@ -1137,7 +1144,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					}
 
 					if (!foundsomefromlinks) {
-						contentString += "> No links from this node\n";
+						contentString += "> No links to this node\n";
 					} 
 					if (!foundsometolinks) {
 						contentString += "> No links to other nodes from this node\n";
@@ -1189,11 +1196,17 @@ export default class Canvas2DocumentPlugin extends Plugin {
 					}
 				
 					if (!foundsomefromlinks) {
-						contentString += "> No links from this node\n";
+						contentString += "> No links to this node\n";
 					} 
 					if (!foundsometolinks) {
 						contentString += "> No links to other nodes from this node\n";
 					}
+					if (!foundsomefromlinks && !foundsometolinks) {
+						contentString += "> **this is a standalone node, handle extra for outline**\n";
+					}
+
+
+					
 
 					// Embedding
 					contentString += "\n ![[" +  element[2] + "]]\n\n"
