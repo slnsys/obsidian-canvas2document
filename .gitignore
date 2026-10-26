@@ -1,6 +1,5 @@
 /node_modules/
 main.js
-package-lock.json
 hierarchtest.js
 devmoncli.ps2
 devmon.ps1
