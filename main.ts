@@ -570,7 +570,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 		// let content = this.app.vault.cachedRead(activeFile);
 	}	
 
-	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes):Promise<boolean> {
+	async findAllXChildren(startGeneration, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes, selectionMode):Promise<boolean> {
 
 		runcounterfunc++
 		if (runcounterfunc > 30) {
@@ -608,7 +608,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 			let children = myparsed_data.edges2.filter(edge => edge.fromNode === child).map(edge => edge.toNode);
 			
 			if (children.length > 0) {
-				const continueRecursion = await this.findAllXChildren(children, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes);
+				const continueRecursion = await this.findAllXChildren(children, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes, selectionMode);
 				if (!continueRecursion) return false;
 			}
 		};
@@ -765,7 +765,7 @@ export default class Canvas2DocumentPlugin extends Plugin {
 								let runcounterforeach: number = 0
 								let limitrecurseNodes: number = 0
 
-								const result = await this.findAllXChildren(children6, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes);
+						const result = await this.findAllXChildren(children6, myparsed_data, fileContents, handledNodes, limitrecurseNodes, runcounterfunc, runcounterforeach, selectedNodes, selectionMode);
 							}
 						}
 					}
